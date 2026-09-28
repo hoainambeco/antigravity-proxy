@@ -29,7 +29,7 @@
     "axios": "^1.8.1",
     "better-sqlite3": "^12.11.1",
     "dotenv": "^16.4.7",
-    "fastify": "^5.2.1",
+    "fastify": "^5.12.5",
     "lodash-es": "^4.17.21",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
@@ -49,5 +49,8 @@
     "tsconfig-paths": "^4.2.0",
     "tsx": "^4.19.3",
     "typescript": "^5.7.3"
+  },
+  "overrides": {
+    "fastify": "$fastify"
   }
 }
