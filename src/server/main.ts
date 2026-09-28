@@ -1,27 +1,31 @@
-import 'reflect-metadata';
-import { NestFactory } from '@nestjs/core';
-import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
-import fastifyMultipart from '@fastify/multipart';
-import { AppModule } from './app.module';
-import { logger } from '../shared/logging/logger';
-import { AccountLeaseService } from '../modules/proxy-gateway/server/modules/account-lease/account-lease.service';
-import { OpenAIOperations } from '../modules/proxy-gateway/server/modules/openai/openai-operations.service';
-import { ProxyService } from '../modules/proxy-gateway/server/proxy.service';
-import { DEFAULT_MAX_FILE_BYTES } from '../modules/proxy-gateway/server/modules/files/file-store.types';
-import { attachOpenAIResponsesWebSocketServer } from '../modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.server';
-import { parseResponsesRequestBody } from '../modules/proxy-gateway/server/modules/openai/responses/openai-responses-request';
+import { registerTrafficAuditHttpHooks } from "@/modules/proxy-gateway/audit/traffic-audit-context";
+import { trafficAuditService } from "@/modules/proxy-gateway/audit/traffic-audit.service";
+import { MAX_IMAGE_GENERATION_BODY_BYTES } from "@/modules/proxy-gateway/server/modules/openai/media/image-input-validation";
+import { thoughtStoreService } from "@/modules/proxy-gateway/thought-store/thought-store.service";
+import fastifyMultipart from "@fastify/multipart";
+import { NestFactory } from "@nestjs/core";
+import {
+  FastifyAdapter,
+  NestFastifyApplication,
+} from "@nestjs/platform-fastify";
+import "reflect-metadata";
+import { isObservable } from "rxjs";
+import { ApiKeyService } from "../modules/api-key/api-key.service";
 import {
   extractApiKeyToken,
   hasConfiguredApiKey,
-} from '../modules/proxy-gateway/server/guards/api-key-auth.util';
-import { isObservable } from 'rxjs';
-import { MAX_IMAGE_GENERATION_BODY_BYTES } from '@/modules/proxy-gateway/server/modules/openai/media/image-input-validation';
-import { registerTrafficAuditHttpHooks } from '@/modules/proxy-gateway/audit/traffic-audit-context';
-import { trafficAuditService } from '@/modules/proxy-gateway/audit/traffic-audit.service';
-import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
+} from "../modules/proxy-gateway/server/guards/api-key-auth.util";
+import { AccountLeaseService } from "../modules/proxy-gateway/server/modules/account-lease/account-lease.service";
+import { DEFAULT_MAX_FILE_BYTES } from "../modules/proxy-gateway/server/modules/files/file-store.types";
+import { OpenAIOperations } from "../modules/proxy-gateway/server/modules/openai/openai-operations.service";
+import { parseResponsesRequestBody } from "../modules/proxy-gateway/server/modules/openai/responses/openai-responses-request";
+import { attachOpenAIResponsesWebSocketServer } from "../modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.server";
+import { ProxyService } from "../modules/proxy-gateway/server/proxy.service";
+import { logger } from "../shared/logging/logger";
+import { AppModule } from "./app.module";
 
-import { ProxyConfig } from '@/modules/config/types';
-import { getServerConfig, setServerConfig } from './server-config';
+import { ProxyConfig } from "@/modules/config/types";
+import { getServerConfig, setServerConfig } from "./server-config";
 
 let app: NestFastifyApplication | null = null;
 let currentPort: number = 0;
@@ -35,7 +39,7 @@ export type NestServerStartResult =
     }
   | {
       success: false;
-      reason: 'address-in-use' | 'unknown';
+      reason: "address-in-use" | "unknown";
       port: number;
       message: string;
     };
@@ -43,22 +47,34 @@ export type NestServerStartResult =
 interface RawMediaBodyParserHost {
   addContentTypeParser: (
     matcher: RegExp,
-    options: { bodyLimit: number; parseAs: 'buffer' },
-    handler: (request: unknown, body: Buffer, done: (error: null, body: Buffer) => void) => void,
+    options: { bodyLimit: number; parseAs: "buffer" },
+    handler: (
+      request: unknown,
+      body: Buffer,
+      done: (error: null, body: Buffer) => void,
+    ) => void,
   ) => void;
 }
 
 interface ImageGenerationRouteLimitHost {
   addHook: (
-    name: 'onRoute',
-    handler: (options: { bodyLimit?: number; method: string | string[]; url: string }) => void,
+    name: "onRoute",
+    handler: (options: {
+      bodyLimit?: number;
+      method: string | string[];
+      url: string;
+    }) => void,
   ) => void;
 }
 
-export function registerImageGenerationBodyLimit(instance: ImageGenerationRouteLimitHost): void {
-  instance.addHook('onRoute', (options) => {
-    const methods = Array.isArray(options.method) ? options.method : [options.method];
-    if (methods.includes('POST') && options.url === '/v1/images/generations') {
+export function registerImageGenerationBodyLimit(
+  instance: ImageGenerationRouteLimitHost,
+): void {
+  instance.addHook("onRoute", (options) => {
+    const methods = Array.isArray(options.method)
+      ? options.method
+      : [options.method];
+    if (methods.includes("POST") && options.url === "/v1/images/generations") {
       options.bodyLimit = MAX_IMAGE_GENERATION_BODY_BYTES;
     }
   });
@@ -76,7 +92,7 @@ export function registerImageGenerationBodyLimit(instance: ImageGenerationRouteL
 function registerRawMediaBodyParser(instance: RawMediaBodyParserHost): void {
   instance.addContentTypeParser(
     /^(?:application|audio|font|image|model|text|video)\//u,
-    { bodyLimit: DEFAULT_MAX_FILE_BYTES + 1024 * 1024, parseAs: 'buffer' },
+    { bodyLimit: DEFAULT_MAX_FILE_BYTES + 1024 * 1024, parseAs: "buffer" },
     (_request, body, done) => {
       done(null, body);
     },
@@ -84,11 +100,14 @@ function registerRawMediaBodyParser(instance: RawMediaBodyParserHost): void {
 }
 
 function isAddressInUseError(error: unknown): boolean {
-  if ((typeof error !== 'object' && typeof error !== 'function') || error === null) {
+  if (
+    (typeof error !== "object" && typeof error !== "function") ||
+    error === null
+  ) {
     return false;
   }
 
-  return Reflect.get(error, 'code') === 'EADDRINUSE';
+  return Reflect.get(error, "code") === "EADDRINUSE";
 }
 
 async function cleanupFailedServerStart() {
@@ -101,17 +120,22 @@ async function cleanupFailedServerStart() {
     detachResponsesWebSocketServer = null;
     await app.close();
   } catch (closeError) {
-    logger.warn('Failed to clean up NestJS server after startup failure', closeError);
+    logger.warn(
+      "Failed to clean up NestJS server after startup failure",
+      closeError,
+    );
   } finally {
     app = null;
     currentPort = 0;
   }
 }
 
-export async function bootstrapNestServer(config: ProxyConfig): Promise<NestServerStartResult> {
+export async function bootstrapNestServer(
+  config: ProxyConfig,
+): Promise<NestServerStartResult> {
   const port = config.port || 8045;
   if (app) {
-    logger.info('NestJS server already running.');
+    logger.info("NestJS server already running.");
     return {
       success: true,
       port: currentPort,
@@ -125,9 +149,13 @@ export async function bootstrapNestServer(config: ProxyConfig): Promise<NestServ
     const fastifyAdapter = new FastifyAdapter();
     registerImageGenerationBodyLimit(fastifyAdapter.getInstance());
     registerTrafficAuditHttpHooks(fastifyAdapter.getInstance());
-    app = await NestFactory.create<NestFastifyApplication>(AppModule, fastifyAdapter, {
-      logger: ['error', 'warn', 'log'],
-    });
+    app = await NestFactory.create<NestFastifyApplication>(
+      AppModule,
+      fastifyAdapter,
+      {
+        logger: ["error", "warn", "log"],
+      },
+    );
 
     await app.register(fastifyMultipart as any, {
       limits: {
@@ -136,53 +164,66 @@ export async function bootstrapNestServer(config: ProxyConfig): Promise<NestServ
         fields: 32,
       },
     });
-    registerRawMediaBodyParser(fastifyAdapter.getInstance() as RawMediaBodyParserHost);
+    registerRawMediaBodyParser(
+      fastifyAdapter.getInstance() as RawMediaBodyParserHost,
+    );
 
-    const apiKeyConfigured = hasConfiguredApiKey(config.api_key);
-    if (apiKeyConfigured) {
-      app.enableCors();
-    }
+    const apiKeyService = app.get(ApiKeyService);
+    const hasDynamicKeys = apiKeyService.hasConfiguredProtection();
+    const apiKeyConfigured =
+      hasConfiguredApiKey(config.api_key) || hasDynamicKeys;
+    app.enableCors();
 
-    const listenHost = apiKeyConfigured ? '0.0.0.0' : '127.0.0.1';
+    const defaultHost = apiKeyConfigured ? "0.0.0.0" : "127.0.0.1";
+    const listenHost = process.env.HOST || defaultHost;
     await app.listen(port, listenHost);
     const openAIOperations = app.get(OpenAIOperations);
     const proxyService = app.get(ProxyService);
-    detachResponsesWebSocketServer = attachOpenAIResponsesWebSocketServer(app.getHttpServer(), {
-      isAuthorized: (request) => {
-        const configuredApiKey = getConfiguredApiKey();
-        return (
-          !hasConfiguredApiKey(configuredApiKey) ||
-          extractApiKeyToken(request.headers) === configuredApiKey
-        );
-      },
-      streamRequest: async (request) => {
-        const body = parseResponsesRequestBody(request);
-        if (!body) {
-          throw new Error('Invalid Responses WebSocket request');
-        }
-        const prepared = openAIOperations.prepareResponsesRequest(body);
-        if (!prepared) {
-          throw new Error(
-            `Unknown or expired previous_response_id: ${String(request.previous_response_id ?? '')}`,
+    detachResponsesWebSocketServer = attachOpenAIResponsesWebSocketServer(
+      app.getHttpServer(),
+      {
+        isAuthorized: (request) => {
+          if (apiKeyService && apiKeyService.hasConfiguredProtection()) {
+            const clientToken = extractApiKeyToken(request.headers);
+            return apiKeyService.validateKeySync(clientToken).valid;
+          }
+          const configuredApiKey = getConfiguredApiKey();
+          return (
+            !hasConfiguredApiKey(configuredApiKey) ||
+            extractApiKeyToken(request.headers) === configuredApiKey
           );
-        }
+        },
+        streamRequest: async (request) => {
+          const body = parseResponsesRequestBody(request);
+          if (!body) {
+            throw new Error("Invalid Responses WebSocket request");
+          }
+          const prepared = openAIOperations.prepareResponsesRequest(body);
+          if (!prepared) {
+            throw new Error(
+              `Unknown or expired previous_response_id: ${String(request.previous_response_id ?? "")}`,
+            );
+          }
 
-        const result = await proxyService.handleChatCompletions(
-          prepared.request,
-          'responses',
-          undefined,
-          {
-            requestSessionId: prepared.requestSessionId,
-            responseId: prepared.responseId,
-            routingSessionId: prepared.routingSessionId,
-          },
-        );
-        if (!isObservable(result)) {
-          throw new Error('Responses WebSocket request did not produce a stream');
-        }
-        return result;
+          const result = await proxyService.handleChatCompletions(
+            prepared.request,
+            "responses",
+            undefined,
+            {
+              requestSessionId: prepared.requestSessionId,
+              responseId: prepared.responseId,
+              routingSessionId: prepared.routingSessionId,
+            },
+          );
+          if (!isObservable(result)) {
+            throw new Error(
+              "Responses WebSocket request did not produce a stream",
+            );
+          }
+          return result;
+        },
       },
-    });
+    );
     currentPort = port;
     logger.info(`NestJS Proxy Server running on http://localhost:${port}`);
     return {
@@ -198,18 +239,21 @@ export async function bootstrapNestServer(config: ProxyConfig): Promise<NestServ
       logger.warn(`NestJS Proxy Server could not start: ${message}`, error);
       return {
         success: false,
-        reason: 'address-in-use',
+        reason: "address-in-use",
         port,
         message,
       };
     }
 
-    logger.error('Failed to start NestJS server', error);
+    logger.error("Failed to start NestJS server", error);
     return {
       success: false,
-      reason: 'unknown',
+      reason: "unknown",
       port,
-      message: error instanceof Error ? error.message : 'Failed to start NestJS server',
+      message:
+        error instanceof Error
+          ? error.message
+          : "Failed to start NestJS server",
     };
   }
 }
@@ -220,13 +264,16 @@ export async function stopNestServer(): Promise<boolean> {
       detachResponsesWebSocketServer?.();
       detachResponsesWebSocketServer = null;
       await app.close();
-      await Promise.allSettled([trafficAuditService.close(), thoughtStoreService.close()]);
+      await Promise.allSettled([
+        trafficAuditService.close(),
+        thoughtStoreService.close(),
+      ]);
       app = null;
       currentPort = 0;
-      logger.info('NestJS server stopped.');
+      logger.info("NestJS server stopped.");
       return true;
     } catch (e) {
-      logger.error('Failed to stop NestJS server', e);
+      logger.error("Failed to stop NestJS server", e);
       return false;
     }
   }
@@ -257,13 +304,15 @@ export function evictNestServerAccountLeaseAccount(accountId: string): boolean {
 
 export function updateNestServerAccountLeaseOAuthHealth(
   accountId: string,
-  oauthHealth: Parameters<AccountLeaseService['updateAccountOAuthHealth']>[1],
+  oauthHealth: Parameters<AccountLeaseService["updateAccountOAuthHealth"]>[1],
 ): boolean {
   if (!app) {
     return false;
   }
 
-  return app.get(AccountLeaseService).updateAccountOAuthHealth(accountId, oauthHealth);
+  return app
+    .get(AccountLeaseService)
+    .updateAccountOAuthHealth(accountId, oauthHealth);
 }
 
 function getConfiguredApiKey(): string | undefined {
@@ -291,7 +340,7 @@ export async function getNestServerStatus(): Promise<{
   return {
     running,
     port: currentPort,
-    base_url: running ? `http://localhost:${currentPort}` : '',
+    base_url: running ? `http://localhost:${currentPort}` : "",
     active_accounts: activeAccounts,
   };
 }

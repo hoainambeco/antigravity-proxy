@@ -121,3 +121,8 @@ requirements/
 # seat-limit backfill script output (contains org ids/names)
 seat-limit-backfill-report.json
 accounts.json
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+data/

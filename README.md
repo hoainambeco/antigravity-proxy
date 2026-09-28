@@ -18,9 +18,12 @@ Seamlessly proxies OpenAI, Anthropic, and Gemini API requests to Google Cloud Co
   - Automatic 429 rate-limit cooldown and failover across accounts.
 - **Thought Signature Recovery**:
   - In-memory preservation of reasoning turns and thought signatures for Gemini 2.0 Thinking & Claude models.
+- **Dynamic API Key Management (TypeORM + SQLite)**:
+  - Create, revoke, enable/disable multiple API keys (`sk-ag-...`) for different clients/users.
+  - Sub-millisecond in-memory cache validation with async last-used tracking.
+  - TypeORM schema migrations with zero `synchronize: true` risk.
 - **Ultra-lightweight & Headless**:
-  - Pure Node.js & TypeScript.
-  - No Electron, no GUI, no SQLite native dependencies (zero `node-gyp`).
+  - Pure Node.js & TypeScript built on NestJS & Fastify.
   - Deployable on Linux VPS, macOS, Windows, or Docker containers.
 
 ---
@@ -80,10 +83,50 @@ cp .env.example .env
 Key variables:
 - `ANTIGRAVITY_OAUTH_CLIENT_ID` / `ANTIGRAVITY_OAUTH_CLIENT_SECRET`: **Required.** See [OAuth Client Credentials](#oauth-client-credentials) below.
 - `PORT`: Port to listen on (default `8045`).
-- `PROXY_API_KEY`: (Optional) Secret key that clients must provide in `Authorization: Bearer <key>`.
+- `PROXY_API_KEY`: (Optional) Master secret key with full admin and proxy access. If omitted, the server uses dynamic API keys in SQLite.
+- `SQLITE_DB_PATH`: Path to SQLite database file (default `./data/antigravity.sqlite`).
 - `ACCOUNTS_FILE`: Path to `accounts.json` (default `./accounts.json`).
 
-### 4. Run Server (Standard NestJS CLI)
+### 4. API Key Management (CLI & Migrations)
+
+Manage dynamic API keys for Cursor, Claude Code, and other clients via CLI:
+
+```bash
+# List all API keys
+npm run api-key list
+
+# Create a new API key (auto-generates sk-ag-...)
+npm run api-key create "Cursor - Work"
+
+# Create an Admin key
+npm run api-key create "Admin Dashboard" -- --role admin
+
+# Toggle active/inactive state
+npm run api-key toggle "Cursor - Work"
+
+# Delete an API key
+npm run api-key delete "Cursor - Work"
+```
+
+#### TypeORM Migrations
+
+The database runs with `synchronize: false` for production safety. Migrations run automatically on startup (`migrationsRun: true`), and can also be managed manually:
+
+```bash
+# Auto-generate migration by comparing Entities against the SQLite schema
+npm run migration:generate -- src/modules/database/migrations/<MigrationName>
+
+# Run pending migrations
+npm run migration:run
+
+# Revert last migration
+npm run migration:revert
+
+# Create empty migration template
+npm run migration:create -- src/modules/database/migrations/<MigrationName>
+```
+
+### 5. Run Server (Standard NestJS CLI)
 
 **Development Mode (live reload / watch):**
 ```bash
@@ -151,14 +194,21 @@ Build and run:
 ```bash
 docker build -t antigravity-proxy .
 
-# Run mounting your accounts.json
+# Run mounting accounts.json and SQLite data volume
 docker run -d \
   --name antigravity-proxy \
   -p 8045:8045 \
   -v $(pwd)/accounts.json:/app/data/accounts.json \
+  -v $(pwd)/data:/app/data \
   -e PORT=8045 \
   antigravity-proxy
 ```
+
+> **Note:** TypeORM migrations execute automatically on container startup (`migrationsRun: true`).
+> To manually trigger production migrations inside a running container:
+> ```bash
+> docker exec -it antigravity-proxy npm run migration:run:prod
+> ```
 
 ---
 

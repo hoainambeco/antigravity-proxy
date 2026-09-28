@@ -139,6 +139,63 @@ Tạo hoặc mở file `accounts.json` và thêm các tài khoản theo định 
 
 ---
 
+## 4.1. Quản lý Đa API Key (TypeORM + SQLite)
+
+Hệ thống hỗ trợ tạo, quản lý và thu hồi nhiều API Key linh hoạt được lưu trữ an toàn trong SQLite thông qua TypeORM. Các client (Cursor, Claude Code, Cline, OpenCode...) có thể dùng các API Key riêng biệt.
+
+### Quản lý qua CLI Terminal:
+
+```bash
+# 1. Liệt kê danh sách API Key:
+npm run api-key list
+
+# 2. Tạo API Key mới (tự sinh sk-ag-...):
+npm run api-key create "Cursor của Nam"
+
+# 3. Tạo API Key với quyền Admin (để gọi các internal API):
+npm run api-key create "Admin Dashboard" -- --role admin
+
+# 4. Tạo API Key với chuỗi tuỳ chọn hoặc ngày hết hạn:
+npm run api-key create "Key Đối Tác" -- --key sk-my-custom-key-123 --expires 2026-12-31
+
+# 5. Tạm thời vô hiệu hoá (Pause / Resume) một API Key:
+npm run api-key toggle "Cursor của Nam"
+
+# 6. Xoá bỏ một API Key:
+npm run api-key delete "Cursor của Nam"
+# hoặc xoá bằng ID:
+npm run api-key delete a987c4a3
+```
+
+### Quản lý qua REST API (Dành cho Admin):
+
+Các endpoint nằm tại `/internal/api-keys` và được bảo vệ bởi `AdminGuard` (yêu cầu gửi header `Authorization: Bearer <ADMIN_OR_MASTER_KEY>`):
+- `GET /internal/api-keys`: Danh sách các key (key được che bớt).
+- `POST /internal/api-keys`: Tạo key mới (body: `{ "name": "...", "role": "client" | "admin", "customKey"?: "...", "expiresAt"?: "..." }`).
+- `GET /internal/api-keys/:id`: Chi tiết key.
+- `PATCH /internal/api-keys/:id`: Bật/tắt hoặc đổi tên key (body: `{ "isActive": false, "name": "..." }`).
+- `DELETE /internal/api-keys/:id`: Xoá vĩnh viễn key.
+
+### Quản lý Migration Database (TypeORM):
+
+Hệ thống **tắt `synchronize: false`** để bảo đảm an toàn dữ liệu và sử dụng cơ chế migration tự động (`migrationsRun: true` khi khởi động server):
+
+```bash
+# Tự động so sánh Entity với Database để sinh file migration mới:
+npm run migration:generate -- src/modules/database/migrations/<TenMigration>
+
+# Chạy migration còn thiếu:
+npm run migration:run
+
+# Hoàn tác (Rollback) migration gần nhất:
+npm run migration:revert
+
+# Tạo file migration rỗng:
+npm run migration:create -- src/modules/database/migrations/<TenMigration>
+```
+
+---
+
 ## 5. Cấu hình hệ thống (.env)
 
 Mở file `.env` để tuỳ chỉnh các tham số:
@@ -151,7 +208,8 @@ Mở file `.env` để tuỳ chỉnh các tham số:
 | `ANTIGRAVITY_OAUTH_CLIENT_KEY` | `antigravity_enterprise` | Tuỳ chọn. Chọn client nào active lúc khởi động. Gõ sai key thì hệ thống lặng lẽ dùng client đầu tiên. |
 | `PORT` | `8045` | Cổng HTTP mà proxy sẽ lắng nghe. |
 | `HOST` | `0.0.0.0` | Địa chỉ host binding (`0.0.0.0` cho phép truy cập từ mạng LAN/Docker). |
-| `PROXY_API_KEY` | *(trống)* | Nếu thiết lập, các client bắt buộc phải gửi header `Authorization: Bearer <KEY>`. Để trống nếu muốn dùng tự do. |
+| `PROXY_API_KEY` | *(trống)* | Master Key tuỳ chọn. Nếu đặt, key này luôn có quyền cao nhất (Admin + Proxy). Nếu để trống, hệ thống sử dụng các API Key linh hoạt lưu trong SQLite. |
+| `SQLITE_DB_PATH` | `./data/antigravity.sqlite` | Đường dẫn file SQLite database lưu danh sách API Key. |
 | `ACCOUNTS_FILE` | `./accounts.json` | Đường dẫn đến file lưu trữ danh sách tài khoản. |
 | `ROUTING_STRATEGY` | `balance` | Chế độ xoay vòng: `balance` (xoay đều), `cache-first` (ưu tiên context cache), `performance-first`. |
 
