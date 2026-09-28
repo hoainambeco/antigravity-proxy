@@ -57,8 +57,13 @@ export class AuditManagementController {
   }
 
   @Get('requests')
-  public list(@Query() query: Record<string, unknown>) {
-    return trafficAuditService.list(parseOrBadRequest(AuditListQuerySchema, query));
+  public async list(@Query() query: Record<string, unknown>) {
+    const res = await trafficAuditService.list(parseOrBadRequest(AuditListQuerySchema, query));
+    return {
+      success: true,
+      data: res.rows || (res as any).data || [],
+      total: res.total || 0,
+    };
   }
 
   @Get('filter-options')

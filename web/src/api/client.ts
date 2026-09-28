@@ -3,12 +3,16 @@ import type { Account, ApiKeyItem, AuditRecord, ModelEntry, SystemStatus } from 
 const BASE_URL = '';
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
+  const savedKey = localStorage.getItem('antigravity_admin_key') || '';
+  const headers: Record<string, string> = {
+    ...(options?.body ? { 'Content-Type': 'application/json' } : {}),
+    ...(savedKey ? { Authorization: `Bearer ${savedKey}` } : {}),
+    ...(options?.headers as Record<string, string>),
+  };
+
   const res = await fetch(`${BASE_URL}${url}`, {
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
+    headers,
   });
 
   if (!res.ok) {

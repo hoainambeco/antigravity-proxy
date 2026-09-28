@@ -28,39 +28,50 @@ export class AdminGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context
       .switchToHttp()
-      .getRequest<{ headers: RequestHeaders; ip?: string }>();
+      .getRequest<{ headers: RequestHeaders; ip?: string; socket?: any; raw?: any }>();
     const clientToken = extractApiKeyToken(request.headers);
 
-    if (this.apiKeyService) {
-      if (!this.apiKeyService.hasConfiguredProtection()) {
-        throw new UnauthorizedException("Admin protection is not configured");
-      }
+    const clientIp =
+      request.ip ||
+      request.raw?.socket?.remoteAddress ||
+      request.socket?.remoteAddress ||
+      "";
+    const isLoopback =
+      clientIp === "127.0.0.1" ||
+      clientIp === "::1" ||
+      clientIp === "::ffff:127.0.0.1" ||
+      clientIp.startsWith("127.") ||
+      clientIp === "localhost";
 
-      if (!clientToken) {
-        throw new UnauthorizedException("API key is required");
-      }
+    const config = getServerConfig();
+    const masterKey = (
+      config?.api_key ||
+      process.env.PROXY_API_KEY ||
+      ""
+    ).trim();
 
-      const isAdmin = await this.apiKeyService.validateAdminKey(clientToken);
-      if (isAdmin) {
+    // 1. If client provided a token, validate it
+    if (clientToken) {
+      if (this.apiKeyService) {
+        const isAdmin = await this.apiKeyService.validateAdminKey(clientToken);
+        if (isAdmin) {
+          return true;
+        }
+      }
+      if (hasConfiguredApiKey(masterKey) && clientToken === masterKey) {
         return true;
       }
-
-      this.logger.warn(`Rejected unauthorized admin request`);
+      this.logger.warn(`Rejected unauthorized admin request with invalid token`);
       throw new UnauthorizedException("Admin API key validation failed");
     }
 
-    // Fallback if ApiKeyService is not registered
-    const config = getServerConfig();
-    const apiKey = config?.api_key;
-
-    if (!hasConfiguredApiKey(apiKey)) {
-      throw new UnauthorizedException("Admin API key is not configured");
-    }
-
-    if (clientToken && clientToken === apiKey) {
+    // 2. Loopback / localhost: allow local administrative dashboard access
+    //    (remote access still requires a valid API key)
+    if (isLoopback) {
       return true;
     }
 
-    throw new UnauthorizedException("API key validation failed");
+    // 3. Otherwise require an API key
+    throw new UnauthorizedException("API key is required");
   }
 }
