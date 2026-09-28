@@ -1,0 +1,19 @@
+[
+  {
+    "id": "account-sample-1",
+    "provider": "google",
+    "email": "user@example.com",
+    "token": {
+      "access_token": "ya29.SAMPLE_ACCESS_TOKEN",
+      "refresh_token": "1//04_SAMPLE_REFRESH_TOKEN_HERE",
+      "expires_in": 3599,
+      "expiry_timestamp": 1740000000,
+      "token_type": "Bearer",
+      "email": "user@example.com",
+      "project_id": "your-gcp-project-id"
+    },
+    "health": {},
+    "created_at": 1740000000000,
+    "last_used": 1740000000000
+  }
+]
