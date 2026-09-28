@@ -1,30 +1,87 @@
+import { ApiKeyService } from "@/modules/api-key/api-key.service";
 import {
   CanActivate,
   ExecutionContext,
+  Inject,
   Injectable,
   Logger,
+  Optional,
   UnauthorizedException,
-} from '@nestjs/common';
-import { getServerConfig } from '../../../../server/server-config';
-import { extractApiKeyToken, hasConfiguredApiKey, type RequestHeaders } from './api-key-auth.util';
-import { buildAuthErrorBody, resolveAuthErrorSurface } from '../common/auth-error-envelope';
+} from "@nestjs/common";
+import { getServerConfig } from "../../../../server/server-config";
+import {
+  buildAuthErrorBody,
+  resolveAuthErrorSurface,
+} from "../common/auth-error-envelope";
+import {
+  extractApiKeyToken,
+  hasConfiguredApiKey,
+  type RequestHeaders,
+} from "./api-key-auth.util";
 
 @Injectable()
 export class ProxyGuard implements CanActivate {
   private readonly logger = new Logger(ProxyGuard.name);
 
-  canActivate(context: ExecutionContext): boolean {
+  constructor(
+    @Optional()
+    @Inject(ApiKeyService)
+    private readonly apiKeyService?: ApiKeyService,
+  ) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context
       .switchToHttp()
-      .getRequest<{ headers: RequestHeaders; ip: string; url?: string }>();
+      .getRequest<{
+        headers: RequestHeaders;
+        ip: string;
+        url?: string;
+        apiKeyInfo?: unknown;
+      }>();
 
+    // 1. If ApiKeyService is available, use dynamic multi-key validation
+    if (this.apiKeyService) {
+      if (!this.apiKeyService.hasConfiguredProtection()) {
+        // Open Mode (no keys configured)
+        return true;
+      }
+
+      const clientToken = extractApiKeyToken(request.headers);
+      const surface = resolveAuthErrorSurface(request);
+
+      if (!clientToken) {
+        this.logger.warn(
+          `Rejected request missing API key from ${request.ip} (${request.url})`,
+        );
+        throw new UnauthorizedException(
+          buildAuthErrorBody(surface, "API key is required"),
+        );
+      }
+
+      const authResult = await this.apiKeyService.validateKey(clientToken);
+      if (authResult.valid) {
+        request.apiKeyInfo = authResult;
+        return true;
+      }
+
+      this.logger.warn(
+        `Rejected unauthorized request from ${request.ip}: ${authResult.reason || "invalid_key"}`,
+      );
+      const message =
+        authResult.reason === "disabled"
+          ? "API key is disabled"
+          : authResult.reason === "expired"
+            ? "API key has expired"
+            : "API key validation failed";
+
+      throw new UnauthorizedException(buildAuthErrorBody(surface, message));
+    }
+
+    // 2. Fallback to static config check if ApiKeyService is not registered
     const config = getServerConfig();
-
-    // 1. Check for API Key in config
     const apiKey = config?.api_key;
     const clientToken = extractApiKeyToken(request.headers);
 
-    // 2. Bypass if no api_key set (Open Mode) or config missing
     if (!hasConfiguredApiKey(apiKey)) {
       return true;
     }
@@ -32,9 +89,11 @@ export class ProxyGuard implements CanActivate {
     if (clientToken === apiKey) {
       return true;
     }
-    this.logger.warn(`Rejected unauthorized request from ${request.ip}`);
 
+    this.logger.warn(`Rejected unauthorized request from ${request.ip}`);
     const surface = resolveAuthErrorSurface(request);
-    throw new UnauthorizedException(buildAuthErrorBody(surface, 'API key validation failed'));
+    throw new UnauthorizedException(
+      buildAuthErrorBody(surface, "API key validation failed"),
+    );
   }
 }

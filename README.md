@@ -18,9 +18,12 @@ Seamlessly proxies OpenAI, Anthropic, and Gemini API requests to Google Cloud Co
   - Automatic 429 rate-limit cooldown and failover across accounts.
 - **Thought Signature Recovery**:
   - In-memory preservation of reasoning turns and thought signatures for Gemini 2.0 Thinking & Claude models.
+- **Dynamic API Key Management (TypeORM + SQLite)**:
+  - Create, revoke, enable/disable multiple API keys (`sk-ag-...`) for different clients/users.
+  - Sub-millisecond in-memory cache validation with async last-used tracking.
+  - TypeORM schema migrations with zero `synchronize: true` risk.
 - **Ultra-lightweight & Headless**:
-  - Pure Node.js & TypeScript.
-  - No Electron, no GUI, no SQLite native dependencies (zero `node-gyp`).
+  - Pure Node.js & TypeScript built on NestJS & Fastify.
   - Deployable on Linux VPS, macOS, Windows, or Docker containers.
 
 ---
@@ -80,10 +83,50 @@ cp .env.example .env
 Key variables:
 - `ANTIGRAVITY_OAUTH_CLIENT_ID` / `ANTIGRAVITY_OAUTH_CLIENT_SECRET`: **Required.** See [OAuth Client Credentials](#oauth-client-credentials) below.
 - `PORT`: Port to listen on (default `8045`).
-- `PROXY_API_KEY`: (Optional) Secret key that clients must provide in `Authorization: Bearer <key>`.
+- `PROXY_API_KEY`: (Optional) Master secret key with full admin and proxy access. If omitted, the server uses dynamic API keys in SQLite.
+- `SQLITE_DB_PATH`: Path to SQLite database file (default `./data/antigravity.sqlite`).
 - `ACCOUNTS_FILE`: Path to `accounts.json` (default `./accounts.json`).
 
-### 4. Run Server (Standard NestJS CLI)
+### 4. API Key Management (CLI & Migrations)
+
+Manage dynamic API keys for Cursor, Claude Code, and other clients via CLI:
+
+```bash
+# List all API keys
+npm run api-key list
+
+# Create a new API key (auto-generates sk-ag-...)
+npm run api-key create "Cursor - Work"
+
+# Create an Admin key
+npm run api-key create "Admin Dashboard" -- --role admin
+
+# Toggle active/inactive state
+npm run api-key toggle "Cursor - Work"
+
+# Delete an API key
+npm run api-key delete "Cursor - Work"
+```
+
+#### TypeORM Migrations
+
+The database runs with `synchronize: false` for production safety. Migrations run automatically on startup (`migrationsRun: true`), and can also be managed manually:
+
+```bash
+# Auto-generate migration by comparing Entities against the SQLite schema
+npm run migration:generate -- src/modules/database/migrations/<MigrationName>
+
+# Run pending migrations
+npm run migration:run
+
+# Revert last migration
+npm run migration:revert
+
+# Create empty migration template
+npm run migration:create -- src/modules/database/migrations/<MigrationName>
+```
+
+### 5. Run Server (Standard NestJS CLI)
 
 **Development Mode (live reload / watch):**
 ```bash
@@ -151,32 +194,142 @@ Build and run:
 ```bash
 docker build -t antigravity-proxy .
 
-# Run mounting your accounts.json
+# Run mounting accounts.json and SQLite data volume
 docker run -d \
   --name antigravity-proxy \
   -p 8045:8045 \
   -v $(pwd)/accounts.json:/app/data/accounts.json \
+  -v $(pwd)/data:/app/data \
   -e PORT=8045 \
   antigravity-proxy
 ```
+
+> **Note:** TypeORM migrations execute automatically on container startup (`migrationsRun: true`).
+> To manually trigger production migrations inside a running container:
+> ```bash
+> docker exec -it antigravity-proxy npm run migration:run:prod
+> ```
 
 ---
 
 ## Client Configuration Examples
 
-### Cursor
-- **Base URL**: `http://localhost:8045/v1`
-- **API Key**: Any dummy string (or your `PROXY_API_KEY`)
-- **Model**: `claude-3-5-sonnet-20241022`, `claude-3-7-sonnet`, `gemini-2.0-flash-exp`, `gemini-2.5-pro`
+Generate a unique API key for each client first (or use `PROXY_API_KEY` from `.env`):
+```bash
+npm run api-key create "My Client"
+# Returns: sk-ag-xxxxxxxxxxxxxxxxxxxxxxxx
+```
 
-### Claude Code CLI
+---
+
+### Cursor IDE
+1. Open **Cursor Settings** (`Ctrl + Shift + J` or `Cmd + Shift + J`) -> **Models**.
+2. Add desired models:
+   - `claude-3-7-sonnet` (or `claude-3-7-sonnet-thought`)
+   - `claude-3-5-sonnet-20241022`
+   - `gemini-2.5-pro`
+   - `gemini-2.0-flash-exp`
+3. Scroll down to **OpenAI API Key**:
+   - Turn ON **Override OpenAI Base URL**.
+   - **Base URL:** `http://localhost:8045/v1`
+   - **API Key:** Enter your generated key (`sk-ag-...`) or `PROXY_API_KEY`.
+4. Click **Verify** to test connection.
+
+---
+
+### OpenCode CLI
+Configure in `opencode.json` (in your workspace or `~/.config/opencode/opencode.json`):
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "antigravity": {
+      "npm": "@ai-sdk/openai",
+      "options": {
+        "baseURL": "http://localhost:8045/v1",
+        "apiKey": "sk-ag-YOUR_API_KEY"
+      },
+      "models": {
+        "claude-3-7-sonnet": { "name": "Claude 3.7 Sonnet" },
+        "gemini-2.5-pro": { "name": "Gemini 2.5 Pro" }
+      }
+    }
+  }
+}
+```
+
+Or via environment variables:
+```bash
+export OPENAI_BASE_URL="http://localhost:8045/v1"
+export OPENAI_API_KEY="sk-ag-YOUR_API_KEY"
+opencode --model openai/claude-3-7-sonnet
+```
+
+---
+
+### Claude Code CLI (Official Anthropic CLI)
 ```bash
 export ANTHROPIC_BASE_URL="http://localhost:8045"
-export ANTHROPIC_API_KEY="sk-antigravity"
+export ANTHROPIC_API_KEY="sk-ag-YOUR_API_KEY"
 claude
 ```
 
-### Cline / Roo Code / OpenCode
-- **Provider**: OpenAI Compatible (or Anthropic Compatible)
-- **Base URL**: `http://localhost:8045/v1` (or `http://localhost:8045` for Anthropic)
-- **API Key**: Any string (or `PROXY_API_KEY`)
+---
+
+### OpenAI Codex / OpenAI SDK
+Connect any OpenAI SDK client directly to the proxy:
+
+#### TypeScript / Node.js
+```typescript
+import OpenAI from 'openai';
+
+const openai = new OpenAI({
+  baseURL: 'http://localhost:8045/v1',
+  apiKey: 'sk-ag-YOUR_API_KEY',
+});
+
+const res = await openai.chat.completions.create({
+  model: 'claude-3-7-sonnet',
+  messages: [{ role: 'user', content: 'Hello!' }],
+});
+console.log(res.choices[0].message.content);
+```
+
+#### Python
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://localhost:8045/v1",
+    api_key="sk-ag-YOUR_API_KEY",
+)
+
+res = client.chat.completions.create(
+    model="claude-3-7-sonnet",
+    messages=[{"role": "user", "content": "Hello!"}],
+)
+print(res.choices[0].message.content)
+```
+
+---
+
+### Cline / Roo Code (VS Code Extension)
+In Settings -> **API Provider**:
+- **OpenAI Compatible:**
+  - **Base URL:** `http://localhost:8045/v1`
+  - **API Key:** `sk-ag-YOUR_API_KEY`
+  - **Model ID:** `claude-3-7-sonnet` or `gemini-2.5-pro`
+- **Anthropic:**
+  - **Base URL:** `http://localhost:8045`
+  - **API Key:** `sk-ag-YOUR_API_KEY`
+  - **Model ID:** `claude-3-7-sonnet`
+
+---
+
+### Aider
+```bash
+aider --openai-api-base http://localhost:8045/v1 \
+      --openai-api-key sk-ag-YOUR_API_KEY \
+      --model openai/claude-3-7-sonnet
+```
