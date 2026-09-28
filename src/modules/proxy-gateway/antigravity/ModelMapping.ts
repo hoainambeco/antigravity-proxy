@@ -1,5 +1,6 @@
 import { isEmpty, isString } from 'lodash-es';
 import { logger } from '@/shared/logging/logger';
+import { isThinkingModel, getDynamicModelSpecs } from './ModelSpecs';
 
 const PUBLIC_MODEL_PRESET_DISPLAY_NAMES = {
   'gemini-3.7-flash-low': 'Gemini 3.7 Flash (Low)',
@@ -168,7 +169,19 @@ export function getPublicModelIdForDisplayName(displayName: unknown): string | u
   if (!isString(displayName) || isEmpty(displayName.trim())) {
     return undefined;
   }
-  return PUBLIC_MODEL_BY_DISPLAY_NAME.get(displayName.trim().toLowerCase());
+  const clean = displayName.trim().toLowerCase();
+  const staticFound = PUBLIC_MODEL_BY_DISPLAY_NAME.get(clean);
+  if (staticFound) {
+    return staticFound;
+  }
+
+  for (const [id, spec] of getDynamicModelSpecs()) {
+    if (spec.display_name && spec.display_name.trim().toLowerCase() === clean) {
+      return id;
+    }
+  }
+
+  return undefined;
 }
 
 export function updateDynamicForwardingRules(oldModel: string, newModel: string): void {
@@ -206,6 +219,19 @@ export function getAllDynamicModels(
   }
 
   const shouldUseStaticFallback = modelIds.size === 0;
+
+  if (!shouldUseStaticFallback) {
+    for (const id of Array.from(modelIds)) {
+      if (/-(?:low|medium|high|extra-low)$/i.test(id)) {
+        continue;
+      }
+      if (isThinkingModel(id)) {
+        modelIds.add(`${id}-low`);
+        modelIds.add(`${id}-medium`);
+        modelIds.add(`${id}-high`);
+      }
+    }
+  }
 
   for (const modelId of getSupportedModels()) {
     modelIds.add(modelId);
@@ -400,7 +426,11 @@ export function resolveModelRoute(
 function shouldHideDeprecatedModelFromList(modelId: string): boolean {
   const normalized = modelId.toLowerCase();
 
-  if (/^gemini-1(\.|$|-)/.test(normalized) || /^gemini-2(\.|$|-)/.test(normalized)) {
+  if (DYNAMIC_MODEL_FORWARDING_RULES.has(normalized)) {
+    return true;
+  }
+
+  if (/^gemini-1(\.|$|-)/.test(normalized)) {
     return true;
   }
 

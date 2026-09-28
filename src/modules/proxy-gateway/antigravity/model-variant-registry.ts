@@ -1,3 +1,9 @@
+import {
+  isThinkingModel,
+  getThinkingBudget,
+  getMaxOutputTokens,
+} from './ModelSpecs';
+
 export type ModelVariantTier = 'low' | 'medium' | 'high';
 
 export interface ResolveModelVariantInput {
@@ -175,6 +181,12 @@ export function usesAuthoritativeThinkingBudget(model: string): boolean {
     return true;
   }
 
+  const baseMatch = /^(.+)-(?:low|medium|high|extra-low)$/i.exec(normalized);
+  const baseModel = baseMatch ? baseMatch[1] : normalized;
+  if (isThinkingModel(baseModel)) {
+    return true;
+  }
+
   if (!normalized.includes('gemini')) {
     return false;
   }
@@ -285,6 +297,50 @@ function resolveNonVariantModel(
   return null;
 }
 
+function resolveDynamicModelVariant(input: ResolveModelVariantInput): ResolvedModelVariant | null {
+  const model = input.model.trim().toLowerCase().replace(/^models\//, '');
+  const explicitModelTier = parseExplicitModelTier(model);
+  const variantMatch = /^(.+)-(?:low|medium|high|extra-low)$/i.exec(model);
+  const isTiered = model.endsWith('-tiered');
+  const baseModel = variantMatch
+    ? variantMatch[1]
+    : isTiered
+      ? model.replace(/-tiered$/, '')
+      : model;
+
+  if (isThinkingModel(model) || isThinkingModel(baseModel) || isTiered) {
+    const requestedTier: ModelVariantTier =
+      explicitModelTier ?? parseEffort(input.effort) ?? inferTier(input.budgetTokens);
+    const maxBudget = getThinkingBudget(model) || getThinkingBudget(baseModel);
+    const maxOutput = getMaxOutputTokens(model) || getMaxOutputTokens(baseModel);
+    let budget = maxBudget;
+    if (requestedTier === 'low') {
+      budget = Math.max(1000, Math.floor(maxBudget * 0.15));
+    } else if (requestedTier === 'medium') {
+      budget = Math.max(2000, Math.floor(maxBudget * 0.40));
+    }
+
+    const effectiveModel = variantMatch
+      ? model
+      : isTiered || isThinkingModel(model)
+        ? model
+        : `${baseModel}-${requestedTier}`;
+
+    return {
+      canonicalModel: isTiered ? model : baseModel,
+      model: effectiveModel,
+      tier: requestedTier,
+      thinkingBudget: budget,
+      maxOutputTokens: maxOutput,
+      includeThoughts: true,
+      preserveClientBudget: false,
+      supportsTools: true,
+    };
+  }
+
+  return null;
+}
+
 export function resolveModelVariant(input: ResolveModelVariantInput): ResolvedModelVariant | null {
   const model = input.model.trim().toLowerCase();
   const family = MODEL_VARIANT_FAMILIES.find(
@@ -293,11 +349,15 @@ export function resolveModelVariant(input: ResolveModelVariantInput): ResolvedMo
       Object.prototype.hasOwnProperty.call(candidate.aliases, model),
   );
   if (!family) {
-    return resolveNonVariantModel(
+    const nonVariant = resolveNonVariantModel(
       model,
       parseEffort(input.effort) ?? inferTier(input.budgetTokens),
       input.budgetTokens,
     );
+    if (nonVariant) {
+      return nonVariant;
+    }
+    return resolveDynamicModelVariant(input);
   }
 
   const explicitModelTier = parseExplicitModelTier(model);
@@ -329,20 +389,47 @@ export function rebindModelVariant(
   const family = MODEL_VARIANT_FAMILIES.find(
     (candidate) => candidate.canonicalModel === variant.canonicalModel,
   );
-  if (!family) {
-    return null;
+  if (family) {
+    const matchedTier = (['high', 'medium', 'low'] as const).find(
+      (tier) => family.variants[tier].model === normalizedPhysicalModel,
+    );
+    if (matchedTier) {
+      return {
+        canonicalModel: family.canonicalModel,
+        tier: matchedTier,
+        ...family.variants[matchedTier],
+      };
+    }
+
+    if (
+      normalizedPhysicalModel === family.canonicalModel ||
+      normalizedPhysicalModel.startsWith(`${family.canonicalModel}-`) ||
+      family.canonicalModel.startsWith(`${normalizedPhysicalModel}-`) ||
+      Object.prototype.hasOwnProperty.call(family.aliases, normalizedPhysicalModel)
+    ) {
+      return {
+        ...variant,
+        model: normalizedPhysicalModel,
+      };
+    }
   }
 
-  const matchedTier = (['high', 'medium', 'low'] as const).find(
-    (tier) => family.variants[tier].model === normalizedPhysicalModel,
-  );
-  if (!matchedTier) {
-    return null;
+  const matched = resolveDynamicModelVariant({ model: normalizedPhysicalModel });
+  if (matched) {
+    return matched;
   }
 
-  return {
-    canonicalModel: family.canonicalModel,
-    tier: matchedTier,
-    ...family.variants[matchedTier],
-  };
+  const baseMatch = /^(.+)-(?:low|medium|high|extra-low|tiered)$/i.exec(normalizedPhysicalModel);
+  const physicalBase = baseMatch ? baseMatch[1] : normalizedPhysicalModel;
+  const variantBaseMatch = /^(.+)-(?:low|medium|high|extra-low|tiered)$/i.exec(variant.canonicalModel);
+  const variantBase = variantBaseMatch ? variantBaseMatch[1] : variant.canonicalModel;
+
+  if (physicalBase === variantBase || physicalBase === variant.canonicalModel) {
+    return {
+      ...variant,
+      model: normalizedPhysicalModel,
+    };
+  }
+
+  return null;
 }

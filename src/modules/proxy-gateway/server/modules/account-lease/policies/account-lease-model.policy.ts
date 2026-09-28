@@ -55,8 +55,8 @@ const GEMINI_PRO_FAMILY = new Set([
 const GEMINI_PRO_IMAGE_FAMILY = new Set(['gemini-3-pro-image', 'gemini-3.1-pro-image']);
 const GEMINI_FLASH_IMAGE_FAMILY = new Set(['gemini-3-flash-image', 'gemini-3.1-flash-image']);
 
-const TIERED_MODEL_SUFFIXES = ['extra-low', 'high', 'medium', 'low'] as const;
-const TIER_PREFERENCE = ['high', 'medium', 'low', 'extra-low'] as const;
+const TIERED_MODEL_SUFFIXES = ['tiered', 'extra-low', 'high', 'medium', 'low'] as const;
+const TIER_PREFERENCE = ['tiered', 'high', 'medium', 'low', 'extra-low'] as const;
 type TieredModelSuffix = (typeof TIER_PREFERENCE)[number];
 export type AccountModelAvailability = 'unknown' | 'available' | 'unavailable';
 
@@ -214,7 +214,38 @@ export class AccountLeaseModelPolicy {
       ];
     }
 
-    return null;
+    const candidates: string[] = [normalizedModel];
+    if (normalizedModel.endsWith('-thinking')) {
+      candidates.push(normalizedModel.replace(/-thinking$/, ''));
+    } else {
+      candidates.push(`${normalizedModel}-thinking`);
+    }
+
+    const suffixMatch = /^(?<base>.+)-(?<tier>tiered|extra-low|low|medium|high)$/.exec(normalizedModel);
+    if (suffixMatch?.groups?.base) {
+      const base = suffixMatch.groups.base;
+      const strippedBase = base.replace(/-tiered$/, '');
+      candidates.push(
+        base,
+        `${strippedBase}-tiered`,
+        `${strippedBase}-high`,
+        `${strippedBase}-medium`,
+        `${strippedBase}-low`,
+        strippedBase,
+      );
+      if (base.endsWith('-thinking')) {
+        candidates.push(base.replace(/-thinking$/, ''));
+      }
+    } else {
+      candidates.push(
+        `${normalizedModel}-tiered`,
+        `${normalizedModel}-high`,
+        `${normalizedModel}-medium`,
+        `${normalizedModel}-low`,
+      );
+    }
+
+    return Array.from(new Set(candidates));
   }
 
   private buildGeminiProCandidates(normalizedModel: string): string[] {

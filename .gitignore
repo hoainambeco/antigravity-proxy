@@ -126,3 +126,9 @@ accounts.json
 *.db
 *.db-*
 data/
+
+
+#AI
+.claude/
+.AI/
+plans/

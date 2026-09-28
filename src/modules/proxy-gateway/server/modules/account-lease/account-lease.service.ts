@@ -185,13 +185,53 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
     return this.selectionPolicy.isNoGoBlocked();
   }
 
+  private periodicQuotaSyncTimer?: NodeJS.Timeout;
+
   async onModuleInit() {
     await this.loadAccounts();
     this.restorePersistedLongImageLimits();
+    void this.syncAllAccountQuotas();
+    this.periodicQuotaSyncTimer = setInterval(() => {
+      void this.syncAllAccountQuotas();
+    }, 60 * 60 * 1000);
+    this.periodicQuotaSyncTimer.unref?.();
   }
 
   async onModuleDestroy(): Promise<void> {
+    if (this.periodicQuotaSyncTimer) {
+      clearInterval(this.periodicQuotaSyncTimer);
+      this.periodicQuotaSyncTimer = undefined;
+    }
     await this.hydrationPolicy.drainBackgroundPersistence();
+  }
+
+  async syncAllAccountQuotas(): Promise<void> {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const accountIds = Array.from(this.tokens.keys());
+    if (accountIds.length === 0) {
+      return;
+    }
+
+    this.logger.log(
+      `[DynamicModelDiscovery] Starting upstream quota & model discovery for ${accountIds.length} account(s)...`,
+    );
+    for (const accountId of accountIds) {
+      const tokenData = this.tokens.get(accountId);
+      if (!tokenData) continue;
+      try {
+        await this.hydrationPolicy.refreshSelectedTokenIfNeeded(accountId, tokenData, nowSeconds);
+        const synced = await this.quotaRefreshPolicy.syncAccountQuota(accountId);
+        if (synced) {
+          this.logger.log(
+            `[DynamicModelDiscovery] Successfully discovered models & refreshed quota for ${tokenData.email}`,
+          );
+        }
+      } catch (error) {
+        this.logger.warn(
+          `[DynamicModelDiscovery] Failed to sync models for ${tokenData.email}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
   }
 
   async loadAccounts(): Promise<number> {
@@ -206,6 +246,7 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
     const count = await this.loadAccounts();
     this.resetRateLimitsFromPersistence();
     this.clearAllSessions();
+    void this.syncAllAccountQuotas();
     return count;
   }
 
@@ -218,6 +259,7 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
     }
     this.resetRateLimitsFromPersistence();
     this.clearAllSessions();
+    void this.syncAllAccountQuotas();
     return count;
   }
 

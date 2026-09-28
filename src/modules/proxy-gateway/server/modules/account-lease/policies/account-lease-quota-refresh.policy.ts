@@ -13,6 +13,7 @@ import {
 } from '../interfaces/account-lease-token-types';
 import { RateLimitReason } from '../../../shared/services/rate-limit-tracker.service';
 import { updateDynamicForwardingRules } from '../../../../antigravity/ModelMapping';
+import { registerDynamicModelSpecs } from '../../../../antigravity/ModelSpecs';
 import { getQuotaModelFamilyId } from '@/modules/cloud-account/utils/quota-model-families';
 
 interface AccountLeaseQuotaRefreshLogger {
@@ -188,6 +189,9 @@ export class AccountLeaseQuotaRefreshPolicy {
       };
       this.options.getTokenCache().set(accountId, updatedTokenData);
       this.applyModelForwardingRules(extractedState);
+      if (latestQuota.models) {
+        registerDynamicModelSpecs(latestQuota.models);
+      }
 
       const familyStates = buildModelQuotaFamilyStates(extractedState);
       const recoveredFamilies = new Set(
@@ -259,6 +263,42 @@ export class AccountLeaseQuotaRefreshPolicy {
     } catch (error) {
       this.options.logger.warn(`Failed to refresh realtime quota for account ${accountId}`, error);
       return 'unavailable';
+    }
+  }
+
+  async syncAccountQuota(accountId: string): Promise<boolean> {
+    const tokenData = this.options.getTokenCache().get(accountId);
+    if (!tokenData) {
+      return false;
+    }
+
+    try {
+      const latestQuota = await this.options.upstream.fetchQuota(
+        tokenData.access_token,
+        tokenData.upstream_proxy_url,
+      );
+      const extractedState = buildAccountLeaseQuotaSnapshot(latestQuota);
+
+      await this.options.accountStore.updateQuota(accountId, latestQuota);
+
+      const updatedTokenData: AccountLeaseTokenData = {
+        ...tokenData,
+        quota: latestQuota,
+        model_quotas: extractedState.modelQuotas,
+        model_limits: extractedState.modelLimits,
+        model_reset_times: extractedState.modelResetTimes,
+        model_forwarding_rules: extractedState.modelForwardingRules,
+      };
+      this.options.getTokenCache().set(accountId, updatedTokenData);
+      this.applyModelForwardingRules(extractedState);
+      if (latestQuota.models) {
+        registerDynamicModelSpecs(latestQuota.models);
+      }
+
+      return true;
+    } catch (error) {
+      this.options.logger.warn(`Failed to sync quota for account ${accountId}`, error);
+      return false;
     }
   }
 }
