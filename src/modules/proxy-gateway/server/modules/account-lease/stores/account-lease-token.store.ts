@@ -1,4 +1,5 @@
 import type { CloudAccount } from '@/modules/cloud-account/types';
+import { registerDynamicModelSpecs } from '../../../../antigravity/ModelSpecs';
 import type { AccountLeaseAccountStore } from '../interfaces/account-lease-adapters';
 import {
   buildAccountLeaseQuotaSnapshot,
@@ -65,6 +66,9 @@ export class AccountLeaseTokenCache {
     const quota = account.quota;
     const extractedState = buildAccountLeaseQuotaSnapshot(quota);
     this.options.applyQuotaSnapshot(extractedState);
+    if (quota?.models) {
+      registerDynamicModelSpecs(quota.models);
+    }
 
     return {
       account_id: account.id,

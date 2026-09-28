@@ -154,6 +154,16 @@ async function main() {
       health: {},
     };
 
+    try {
+      console.log('📡 Đang đồng bộ danh sách models và hạn mức từ Google Upstream...');
+      const quota = await GoogleAPIService.fetchQuota(tokens.access_token);
+      newAccount.quota = quota;
+      const modelCount = Object.keys(quota.models || {}).length;
+      console.log(`✅ Đã đồng bộ thành công ${modelCount} models khả dụng từ Google!`);
+    } catch {
+      logger.warn('Chưa lấy được quota ngay lúc này, hệ thống sẽ tự động đồng bộ khi chạy.');
+    }
+
     await jsonAccountStoreInstance.upsertAccount(newAccount);
 
     if (existingIndex !== -1) {
