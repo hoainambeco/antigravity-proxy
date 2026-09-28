@@ -264,51 +264,173 @@ docker run -d \
 
 ## 7. Hướng dẫn kết nối các Client
 
-### A. Cursor IDE
-1. Mở **Cursor Settings** -> chọn **Models**.
-2. Tắt các model mặc định nếu muốn, thêm các model mong muốn:
-   - `claude-3-7-sonnet`
-   - `claude-3-5-sonnet-20241022`
-   - `gemini-2.5-pro`
-   - `gemini-2.0-flash-exp`
-3. Cuộn xuống phần **OpenAI API Key**:
-   - Bật **Override OpenAI Base URL**.
-   - Điền URL: `http://localhost:8045/v1`
-   - Điền API Key: Nhập `PROXY_API_KEY` của bạn (hoặc bất kỳ chuỗi nào nếu không đặt key).
-
----
-
-### B. Claude Code CLI (Official Anthropic CLI)
-Thiết lập biến môi trường trỏ trực tiếp vào endpoint Anthropic của proxy:
+Trước khi kết nối, bạn hãy tạo riêng một API Key cho mỗi client (hoặc dùng Master Key trong `.env`):
 ```bash
-export ANTHROPIC_BASE_URL="http://localhost:8045"
-export ANTHROPIC_API_KEY="sk-antigravity"
-
-# Khởi chạy Claude Code
-claude
+npm run api-key create "Cursor của Nam"
+# Lấy key có dạng: sk-ag-xxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 ---
 
-### C. Cline / Roo Code (VS Code Extension)
-1. Mở cài đặt Cline trên VS Code.
-2. Tại mục **API Provider**, chọn **OpenAI Compatible** (hoặc **Anthropic**):
-   - Nếu chọn **OpenAI Compatible**:
-     - Base URL: `http://localhost:8045/v1`
-     - API Key: `sk-antigravity` (hoặc key của bạn)
-     - Model ID: `claude-3-7-sonnet` hoặc `gemini-2.5-pro`
-   - Nếu chọn **Anthropic**:
-     - Base URL: `http://localhost:8045`
-     - API Key: `sk-antigravity`
-     - Model ID: `claude-3-7-sonnet`
+### A. Cursor IDE
+1. Mở **Cursor Settings** (phím tắt `Ctrl + Shift + J` hoặc `Cmd + Shift + J`) -> chọn tab **Models**.
+2. Thêm các model bạn muốn sử dụng vào danh sách:
+   - `claude-3-7-sonnet` (hoặc `claude-3-7-sonnet-thought`)
+   - `claude-3-5-sonnet-20241022`
+   - `gemini-2.5-pro`
+   - `gemini-2.0-flash-exp`
+3. Cuộn xuống mục **OpenAI API Key**:
+   - Bật gạt **Override OpenAI Base URL**.
+   - **Base URL:** `http://localhost:8045/v1`
+   - **API Key:** Nhập API Key bạn vừa tạo (`sk-ag-...`) hoặc `PROXY_API_KEY`.
+4. Nhấn **Verify** để kiểm tra kết nối (hiển thị tích xanh là thành công).
 
 ---
 
-### D. OpenCode CLI
-Cấu hình trong `~/.config/opencode/opencode.json` hoặc biến môi trường:
+### B. OpenCode CLI
+OpenCode hỗ trợ kết nối thông qua file cấu hình `opencode.json` (tại thư mục project hoặc `~/.config/opencode/opencode.json`) hoặc thông qua biến môi trường:
+
+#### Cách 1: Cấu hình `opencode.json` (Khuyên dùng)
+Tạo hoặc chỉnh sửa file `opencode.json`:
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "antigravity": {
+      "npm": "@ai-sdk/openai",
+      "options": {
+        "baseURL": "http://localhost:8045/v1",
+        "apiKey": "sk-ag-YOUR_API_KEY"
+      },
+      "models": {
+        "claude-3-7-sonnet": {
+          "name": "Claude 3.7 Sonnet (Proxy)"
+        },
+        "gemini-2.5-pro": {
+          "name": "Gemini 2.5 Pro (Proxy)"
+        },
+        "gemini-2.0-flash-exp": {
+          "name": "Gemini 2.0 Flash (Proxy)"
+        }
+      }
+    }
+  }
+}
+```
+
+#### Cách 2: Biến môi trường
 ```bash
 export OPENAI_BASE_URL="http://localhost:8045/v1"
-export OPENAI_API_KEY="sk-antigravity"
+export OPENAI_API_KEY="sk-ag-YOUR_API_KEY"
+
+# Khởi chạy opencode với model tuỳ chọn
+opencode --model openai/claude-3-7-sonnet
+```
+
+---
+
+### C. Claude Code CLI (Official Anthropic CLI)
+Claude Code sử dụng trực tiếp giao thức Anthropic Messages API (`/v1/messages`) được Antigravity Proxy giả lập chuẩn 100%:
+
+```bash
+# Thiết lập biến môi trường
+export ANTHROPIC_BASE_URL="http://localhost:8045"
+export ANTHROPIC_API_KEY="sk-ag-YOUR_API_KEY"
+
+# Chạy Claude Code
+claude
+```
+> **Mẹo:** Proxy hỗ trợ đầy đủ tính năng suy luận sâu (Thinking / Extended Reasoning) của Claude 3.7 Sonnet mà không lo rụng Thought Signature khi tool execution.
+
+---
+
+### D. OpenAI Codex / OpenAI SDK / ChatGPT Apps
+Bất kỳ công cụ hoặc SDK nào hỗ trợ OpenAI đều có thể trỏ thẳng vào Antigravity Proxy:
+
+#### Node.js / TypeScript (OpenAI SDK):
+```typescript
+import OpenAI from 'openai';
+
+const openai = new OpenAI({
+  baseURL: 'http://localhost:8045/v1',
+  apiKey: 'sk-ag-YOUR_API_KEY',
+});
+
+async function main() {
+  const completion = await openai.chat.completions.create({
+    model: 'claude-3-7-sonnet',
+    messages: [{ role: 'user', content: 'Xin chào!' }],
+  });
+  console.log(completion.choices[0].message.content);
+}
+main();
+```
+
+#### Python (OpenAI SDK):
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://localhost:8045/v1",
+    api_key="sk-ag-YOUR_API_KEY",
+)
+
+response = client.chat.completions.create(
+    model="claude-3-7-sonnet",
+    messages=[{"role": "user", "content": "Hello world"}],
+)
+print(response.choices[0].message.content)
+```
+
+#### Codex WebSocket Responses (`/v1/responses`):
+Antigravity Proxy hỗ trợ endpoint WebSocket chuẩn `/v1/responses` của OpenAI Responses API dành cho các agent Codex tương tác thời gian thực hai chiều.
+
+---
+
+### E. Cline & Roo Code (VS Code Extension)
+1. Mở extension **Cline** hoặc **Roo Code** trong VS Code, nhấn vào biểu tượng bánh răng **Settings**.
+2. Chọn **API Provider**:
+   - **Cách 1 - Chuẩn OpenAI Compatible:**
+     - **API Provider:** `OpenAI Compatible`
+     - **Base URL:** `http://localhost:8045/v1`
+     - **API Key:** `sk-ag-YOUR_API_KEY`
+     - **Model ID:** `claude-3-7-sonnet` (hoặc `gemini-2.5-pro`)
+   - **Cách 2 - Chuẩn Anthropic:**
+     - **API Provider:** `Anthropic`
+     - **Base URL:** `http://localhost:8045`
+     - **API Key:** `sk-ag-YOUR_API_KEY`
+     - **Model ID:** `claude-3-7-sonnet`
+
+---
+
+### F. Aider & Continue.dev
+#### Aider (Terminal AI Pair Programmer):
+```bash
+aider --openai-api-base http://localhost:8045/v1 \
+      --openai-api-key sk-ag-YOUR_API_KEY \
+      --model openai/claude-3-7-sonnet
+```
+
+#### Continue.dev (`~/.continue/config.json`):
+```json
+{
+  "models": [
+    {
+      "title": "Antigravity Claude 3.7",
+      "provider": "openai",
+      "model": "claude-3-7-sonnet",
+      "apiBase": "http://localhost:8045/v1",
+      "apiKey": "sk-ag-YOUR_API_KEY"
+    },
+    {
+      "title": "Antigravity Gemini 2.5 Pro",
+      "provider": "openai",
+      "model": "gemini-2.5-pro",
+      "apiBase": "http://localhost:8045/v1",
+      "apiKey": "sk-ag-YOUR_API_KEY"
+    }
+  ]
+}
 ```
 
 ---

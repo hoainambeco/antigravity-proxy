@@ -214,19 +214,122 @@ docker run -d \
 
 ## Client Configuration Examples
 
-### Cursor
-- **Base URL**: `http://localhost:8045/v1`
-- **API Key**: Any dummy string (or your `PROXY_API_KEY`)
-- **Model**: `claude-3-5-sonnet-20241022`, `claude-3-7-sonnet`, `gemini-2.0-flash-exp`, `gemini-2.5-pro`
+Generate a unique API key for each client first (or use `PROXY_API_KEY` from `.env`):
+```bash
+npm run api-key create "My Client"
+# Returns: sk-ag-xxxxxxxxxxxxxxxxxxxxxxxx
+```
 
-### Claude Code CLI
+---
+
+### Cursor IDE
+1. Open **Cursor Settings** (`Ctrl + Shift + J` or `Cmd + Shift + J`) -> **Models**.
+2. Add desired models:
+   - `claude-3-7-sonnet` (or `claude-3-7-sonnet-thought`)
+   - `claude-3-5-sonnet-20241022`
+   - `gemini-2.5-pro`
+   - `gemini-2.0-flash-exp`
+3. Scroll down to **OpenAI API Key**:
+   - Turn ON **Override OpenAI Base URL**.
+   - **Base URL:** `http://localhost:8045/v1`
+   - **API Key:** Enter your generated key (`sk-ag-...`) or `PROXY_API_KEY`.
+4. Click **Verify** to test connection.
+
+---
+
+### OpenCode CLI
+Configure in `opencode.json` (in your workspace or `~/.config/opencode/opencode.json`):
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "antigravity": {
+      "npm": "@ai-sdk/openai",
+      "options": {
+        "baseURL": "http://localhost:8045/v1",
+        "apiKey": "sk-ag-YOUR_API_KEY"
+      },
+      "models": {
+        "claude-3-7-sonnet": { "name": "Claude 3.7 Sonnet" },
+        "gemini-2.5-pro": { "name": "Gemini 2.5 Pro" }
+      }
+    }
+  }
+}
+```
+
+Or via environment variables:
+```bash
+export OPENAI_BASE_URL="http://localhost:8045/v1"
+export OPENAI_API_KEY="sk-ag-YOUR_API_KEY"
+opencode --model openai/claude-3-7-sonnet
+```
+
+---
+
+### Claude Code CLI (Official Anthropic CLI)
 ```bash
 export ANTHROPIC_BASE_URL="http://localhost:8045"
-export ANTHROPIC_API_KEY="sk-antigravity"
+export ANTHROPIC_API_KEY="sk-ag-YOUR_API_KEY"
 claude
 ```
 
-### Cline / Roo Code / OpenCode
-- **Provider**: OpenAI Compatible (or Anthropic Compatible)
-- **Base URL**: `http://localhost:8045/v1` (or `http://localhost:8045` for Anthropic)
-- **API Key**: Any string (or `PROXY_API_KEY`)
+---
+
+### OpenAI Codex / OpenAI SDK
+Connect any OpenAI SDK client directly to the proxy:
+
+#### TypeScript / Node.js
+```typescript
+import OpenAI from 'openai';
+
+const openai = new OpenAI({
+  baseURL: 'http://localhost:8045/v1',
+  apiKey: 'sk-ag-YOUR_API_KEY',
+});
+
+const res = await openai.chat.completions.create({
+  model: 'claude-3-7-sonnet',
+  messages: [{ role: 'user', content: 'Hello!' }],
+});
+console.log(res.choices[0].message.content);
+```
+
+#### Python
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://localhost:8045/v1",
+    api_key="sk-ag-YOUR_API_KEY",
+)
+
+res = client.chat.completions.create(
+    model="claude-3-7-sonnet",
+    messages=[{"role": "user", "content": "Hello!"}],
+)
+print(res.choices[0].message.content)
+```
+
+---
+
+### Cline / Roo Code (VS Code Extension)
+In Settings -> **API Provider**:
+- **OpenAI Compatible:**
+  - **Base URL:** `http://localhost:8045/v1`
+  - **API Key:** `sk-ag-YOUR_API_KEY`
+  - **Model ID:** `claude-3-7-sonnet` or `gemini-2.5-pro`
+- **Anthropic:**
+  - **Base URL:** `http://localhost:8045`
+  - **API Key:** `sk-ag-YOUR_API_KEY`
+  - **Model ID:** `claude-3-7-sonnet`
+
+---
+
+### Aider
+```bash
+aider --openai-api-base http://localhost:8045/v1 \
+      --openai-api-key sk-ag-YOUR_API_KEY \
+      --model openai/claude-3-7-sonnet
+```
