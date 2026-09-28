@@ -3,6 +3,9 @@ import { trafficAuditService } from "@/modules/proxy-gateway/audit/traffic-audit
 import { MAX_IMAGE_GENERATION_BODY_BYTES } from "@/modules/proxy-gateway/server/modules/openai/media/image-input-validation";
 import { thoughtStoreService } from "@/modules/proxy-gateway/thought-store/thought-store.service";
 import fastifyMultipart from "@fastify/multipart";
+import fastifyStatic from "@fastify/static";
+import path from "node:path";
+import fs from "node:fs";
 import { NestFactory } from "@nestjs/core";
 import {
   FastifyAdapter,
@@ -173,6 +176,16 @@ export async function bootstrapNestServer(
     const apiKeyConfigured =
       hasConfiguredApiKey(config.api_key) || hasDynamicKeys;
     app.enableCors();
+
+    const webDistPath = path.resolve(process.cwd(), "web/dist");
+    if (fs.existsSync(webDistPath)) {
+      await app.register(fastifyStatic as any, {
+        root: webDistPath,
+        prefix: "/",
+        decorateReply: true,
+      });
+      logger.info(`Web UI static dashboard mounted from ${webDistPath}`);
+    }
 
     const defaultHost = apiKeyConfigured ? "0.0.0.0" : "127.0.0.1";
     const listenHost = process.env.HOST || defaultHost;

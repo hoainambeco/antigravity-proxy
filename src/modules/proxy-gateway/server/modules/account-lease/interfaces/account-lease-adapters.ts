@@ -14,6 +14,8 @@ export interface AccountLeaseAccountStore {
   getAccount(accountId: string): Promise<CloudAccount | undefined>;
   updateToken(accountId: string, token: CloudAccount['token']): Promise<void>;
   updateQuota(accountId: string, quota: CloudQuotaData): Promise<void>;
+  deleteAccount?(accountId: string): Promise<boolean>;
+  upsertAccount?(account: CloudAccount): Promise<void>;
   mutateHealth(
     accountId: string,
     mutation: (health: CloudAccount['health']) => CloudAccount['health'],

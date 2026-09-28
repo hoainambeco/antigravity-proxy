@@ -1,0 +1,235 @@
+import React, { useState } from 'react';
+import type { Account } from '../types';
+import { api } from '../api/client';
+import { Users, RefreshCw, Trash2, Plus, AlertCircle, CheckCircle2, ShieldAlert, Clock } from 'lucide-react';
+
+interface AccountsViewProps {
+  accounts: Account[];
+  onReload: () => void;
+}
+
+export const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onReload }) => {
+  const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [oauthLoading, setOauthLoading] = useState(false);
+  const [oauthUrl, setOauthUrl] = useState<string | null>(null);
+
+  const handleSyncAccount = async (id: string) => {
+    try {
+      setSyncingId(id);
+      await api.syncAccounts(id);
+      onReload();
+    } catch (err: any) {
+      alert(`Sync failed: ${err.message}`);
+    } finally {
+      setSyncingId(null);
+    }
+  };
+
+  const handleDeleteAccount = async (id: string, email: string) => {
+    if (!confirm(`Bạn có chắc muốn xóa tài khoản [${email}] không?`)) {
+      return;
+    }
+
+    try {
+      setDeletingId(id);
+      await api.deleteAccount(id);
+      onReload();
+    } catch (err: any) {
+      alert(`Delete failed: ${err.message}`);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleAddAccount = async () => {
+    try {
+      setOauthLoading(true);
+      const res = await api.getOAuthUrl();
+      if (res?.url) {
+        setOauthUrl(res.url);
+        window.open(res.url, '_blank', 'width=600,height=700');
+      }
+    } catch (err: any) {
+      alert(`Không tạo được link OAuth: ${err.message}`);
+    } finally {
+      setOauthLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header controls */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-bold text-zinc-100 flex items-center gap-2">
+            <Users className="w-5 h-5 text-emerald-400" />
+            Tài khoản Google Cloud ({accounts.length})
+          </h2>
+          <p className="text-xs text-zinc-400">
+            Hệ thống tự động xoay vòng tài khoản và chuyển tài khoản khi gặp giới hạn tốc độ (Rate Limit 429).
+          </p>
+        </div>
+
+        <button
+          onClick={handleAddAccount}
+          disabled={oauthLoading}
+          className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-zinc-950 rounded-xl font-semibold text-sm transition-all shadow-lg shadow-emerald-500/20"
+        >
+          <Plus className="w-4 h-4" />
+          <span>{oauthLoading ? 'Đang mở OAuth...' : 'Thêm tài khoản Google'}</span>
+        </button>
+      </div>
+
+      {oauthUrl && (
+        <div className="p-4 rounded-xl bg-zinc-900 border border-emerald-500/30 text-xs text-zinc-300 flex items-center justify-between">
+          <div className="space-y-1">
+            <p className="font-semibold text-emerald-400">Tab đăng nhập Google đã được mở!</p>
+            <p className="text-zinc-400">Nếu trình duyệt chặn popup, bạn có thể click trực tiếp vào link này:</p>
+            <a href={oauthUrl} target="_blank" rel="noreferrer" className="text-teal-400 underline break-all font-mono">
+              {oauthUrl}
+            </a>
+          </div>
+          <button
+            onClick={() => setOauthUrl(null)}
+            className="px-3 py-1.5 rounded-lg bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+          >
+            Đóng
+          </button>
+        </div>
+      )}
+
+      {/* Account Cards */}
+      {accounts.length === 0 ? (
+        <div className="p-12 text-center rounded-2xl border border-zinc-800 bg-zinc-900/30">
+          <AlertCircle className="w-10 h-10 text-zinc-500 mx-auto mb-3" />
+          <p className="text-sm text-zinc-300 font-medium">Chưa có tài khoản Google nào</p>
+          <p className="text-xs text-zinc-500 mt-1 max-w-sm mx-auto">
+            Thêm tài khoản qua nút "Thêm tài khoản Google" hoặc chạy lệnh <code className="text-emerald-400 font-mono">npm run add-account</code> trên terminal.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4">
+          {accounts.map((account) => {
+            const models = account.quota?.models || {};
+            const modelKeys = Object.keys(models);
+
+            return (
+              <div
+                key={account.id}
+                className="p-5 rounded-2xl bg-zinc-900/60 border border-zinc-800 hover:border-zinc-700/80 transition-all space-y-4"
+              >
+                {/* Account Header */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-zinc-800/80">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center font-bold text-zinc-200">
+                      {account.email.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-base text-zinc-100">{account.email}</span>
+                        <span className="text-xs font-mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-400">
+                          {account.id}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1 text-xs text-zinc-400">
+                        <span>Project: <code className="text-zinc-300 font-mono">{account.project_id || 'N/A'}</code></span>
+                        <span>•</span>
+                        <span>Tier: <span className="text-emerald-400 font-medium">{account.quota?.subscription_tier || 'Standard'}</span></span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                    {account.is_cooldown ? (
+                      <span className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium">
+                        <ShieldAlert className="w-3.5 h-3.5" />
+                        Cooldown ({account.cooldown_remaining_sec}s)
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Active
+                      </span>
+                    )}
+
+                    <button
+                      onClick={() => handleSyncAccount(account.id)}
+                      disabled={syncingId === account.id}
+                      className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-all text-xs font-medium flex items-center gap-1.5 disabled:opacity-50"
+                      title="Sync Quota"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${syncingId === account.id ? 'animate-spin text-emerald-400' : ''}`} />
+                      <span className="hidden sm:inline">Sync</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleDeleteAccount(account.id, account.email)}
+                      disabled={deletingId === account.id}
+                      className="p-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition-all text-xs flex items-center gap-1.5"
+                      title="Xóa tài khoản"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Xóa</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Quota breakdown */}
+                <div>
+                  <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2.5">
+                    Hạn mức Quota Models ({modelKeys.length} models)
+                  </h4>
+                  {modelKeys.length === 0 ? (
+                    <p className="text-xs text-zinc-500 italic">Chưa có dữ liệu hạn mức. Bấm "Sync" để tải.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5">
+                      {modelKeys.map((modelKey) => {
+                        const m = models[modelKey];
+                        const pct = m?.percentage ?? 0;
+                        const barColor =
+                          pct >= 50
+                            ? 'bg-emerald-500'
+                            : pct >= 20
+                              ? 'bg-amber-500'
+                              : 'bg-rose-500';
+
+                        return (
+                          <div
+                            key={modelKey}
+                            className="bg-zinc-950 p-2.5 rounded-xl border border-zinc-800/60 flex flex-col justify-between"
+                          >
+                            <div className="flex items-start justify-between gap-1 mb-1.5">
+                              <span className="text-xs font-medium text-zinc-300 truncate" title={modelKey}>
+                                {modelKey}
+                              </span>
+                              <span className="text-xs font-mono font-bold text-zinc-100">{pct}%</span>
+                            </div>
+                            <div>
+                              <div className="w-full bg-zinc-800 rounded-full h-1.5 overflow-hidden">
+                                <div
+                                  className={`h-1.5 rounded-full transition-all ${barColor}`}
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                              {m?.resetTime && (
+                                <div className="flex items-center gap-1 text-[10px] text-zinc-500 mt-1">
+                                  <Clock className="w-2.5 h-2.5" />
+                                  <span>Reset: {new Date(m.resetTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};

@@ -31,7 +31,7 @@ Dự án cho phép bạn sử dụng các tài khoản **Google Cloud Code / Ant
   - Phân phối tải theo cơ chế **Round-Robin** (xoay vòng đều) hoặc **Sticky Session** (giữ nguyên tài khoản trong cùng phiên chat để tối ưu bộ nhớ đệm Context Cache).
   - Tự động phát hiện lỗi `429 Rate Limit` để đưa tài khoản vào thời gian nghỉ (Cooldown) và failover mượt mà sang tài khoản tiếp theo mà không làm gián đoạn request của người dùng.
 - **Thought Signature Recovery:** Tự động khôi phục và duy trì chuỗi suy luận (Reasoning Trace / Signature) cho các mô hình suy nghĩ như **Claude 3.7 Sonnet (Thinking)** và **Gemini 2.0 Flash / Pro**, loại bỏ triệt để lỗi `400 Invalid Argument` do rụng signature khi gọi function calling/tools.
-- **Tiêu chuẩn NestJS CLI:** Hỗ trợ đầy đủ các lệnh phát triển và build chuẩn NestJS (`npm run start:dev`, `npm run build`, `npm run start:prod`).
+- **Tiêu chuẩn NestJS CLI & Web Dashboard:** Hỗ trợ đầy đủ các lệnh phát triển NestJS, tích hợp sẵn **Web UI Dashboard** hiện đại (React + Vite + TailwindCSS) tại `http://localhost:8044/` để quản lý trực quan tài khoản, quota models, API keys và traffic logs.
 
 ---
 

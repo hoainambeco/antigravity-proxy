@@ -267,6 +267,42 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
     this.selectionPolicy.clearSessions();
   }
 
+  async getAccountsOverview() {
+    const rawAccounts = await this.accountStore.getAccounts();
+    return rawAccounts.map((account) => {
+      const isLocked = this.rateLimitTracker.isRateLimited(account.id);
+      const remainingWaitSec = this.rateLimitTracker.getRemainingWaitSec(account.id);
+      return {
+        id: account.id,
+        email: account.email,
+        provider: account.provider,
+        project_id: account.token?.project_id,
+        created_at: account.created_at,
+        last_used: account.last_used,
+        is_healthy: account.health?.oauth?.refresh_blocked !== true,
+        is_cooldown: isLocked,
+        cooldown_remaining_sec: remainingWaitSec,
+        quota: account.quota,
+      };
+    });
+  }
+
+  async deleteAccountById(accountId: string): Promise<boolean> {
+    this.evictAccount(accountId);
+    if (this.accountStore.deleteAccount) {
+      return await this.accountStore.deleteAccount(accountId);
+    }
+    return false;
+  }
+
+  async syncSingleAccount(accountId: string): Promise<boolean> {
+    const tokenData = this.tokens.get(accountId);
+    if (!tokenData) return false;
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    await this.hydrationPolicy.refreshSelectedTokenIfNeeded(accountId, tokenData, nowSeconds);
+    return await this.quotaRefreshPolicy.syncAccountQuota(accountId);
+  }
+
   evictAccount(accountId: string): boolean {
     this.selectionPolicy.clearAccountSessions(accountId);
     const deleted = this.tokens.delete(accountId);

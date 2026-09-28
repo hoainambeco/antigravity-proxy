@@ -1,4 +1,15 @@
-FROM node:22-slim AS builder
+# Stage 1: Build Frontend Web UI
+FROM node:22-slim AS web-builder
+WORKDIR /app/web
+
+COPY web/package*.json ./
+RUN npm install
+
+COPY web/ ./
+RUN npm run build
+
+# Stage 2: Build Backend NestJS
+FROM node:22-slim AS backend-builder
 WORKDIR /app
 
 COPY package*.json tsconfig*.json nest-cli.json ./
@@ -8,13 +19,15 @@ COPY src/ ./src/
 RUN npm run build
 RUN npm prune --omit=dev
 
+# Stage 3: Production Runner
 FROM node:22-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
 COPY package*.json ./
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/dist ./dist
+COPY --from=backend-builder /app/node_modules ./node_modules
+COPY --from=backend-builder /app/dist ./dist
+COPY --from=web-builder /app/web/dist ./web/dist
 
 EXPOSE 8045
 VOLUME ["/app/data"]

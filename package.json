@@ -5,6 +5,9 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "nest build",
+    "web:dev": "npm --prefix web run dev",
+    "web:build": "npm --prefix web run build",
+    "build:all": "npm run web:build && npm run build",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
@@ -21,6 +24,7 @@
   },
   "dependencies": {
     "@fastify/multipart": "^9.4.0",
+    "@fastify/static": "^10.1.5",
     "@nestjs/common": "^11.1.18",
     "@nestjs/core": "^11.1.18",
     "@nestjs/platform-fastify": "^11.1.18",

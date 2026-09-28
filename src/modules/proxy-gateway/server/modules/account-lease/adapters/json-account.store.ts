@@ -83,6 +83,18 @@ export class JsonAccountStore implements AccountLeaseAccountStore {
     });
   }
 
+  async deleteAccount(accountId: string): Promise<boolean> {
+    let deleted = false;
+    await this.lockedWrite((accounts) => {
+      const idx = accounts.findIndex((a) => a.id === accountId);
+      if (idx !== -1) {
+        accounts.splice(idx, 1);
+        deleted = true;
+      }
+    });
+    return deleted;
+  }
+
   async mutateHealth(
     accountId: string,
     mutation: (health: CloudAccount['health']) => CloudAccount['health'],

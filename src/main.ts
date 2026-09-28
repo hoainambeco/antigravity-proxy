@@ -33,6 +33,7 @@ async function run() {
     );
     console.log(`======================================================`);
     console.log(`Supported endpoints:`);
+    console.log(`  • Web UI:    http://localhost:${result.port}/`);
     console.log(
       `  • OpenAI:    http://localhost:${result.port}/v1/chat/completions`,
     );
