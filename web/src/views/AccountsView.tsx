@@ -3,6 +3,16 @@ import type { Account } from '../types';
 import { api } from '../api/client';
 import { Users, RefreshCw, Trash2, Plus, AlertCircle, CheckCircle2, ShieldAlert, Clock } from 'lucide-react';
 
+function formatResetCountdown(resetTime: string): string {
+  const diffMs = new Date(resetTime).getTime() - Date.now();
+  if (diffMs <= 0) return 'Đang reset';
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 60) return `${diffMin}m`;
+  const hours = Math.floor(diffMin / 60);
+  const mins = diffMin % 60;
+  return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+}
+
 interface AccountsViewProps {
   accounts: Account[];
   onReload: () => void;
@@ -48,7 +58,15 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onReload }
       const res = await api.getOAuthUrl();
       if (res?.url) {
         setOauthUrl(res.url);
-        window.open(res.url, '_blank', 'width=600,height=700');
+        const popup = window.open(res.url, '_blank', 'width=600,height=700');
+        if (popup) {
+          const timer = setInterval(() => {
+            if (popup.closed) {
+              clearInterval(timer);
+              onReload();
+            }
+          }, 1000);
+        }
       }
     } catch (err: any) {
       alert(`Không tạo được link OAuth: ${err.message}`);
@@ -215,7 +233,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onReload }
                               {m?.resetTime && (
                                 <div className="flex items-center gap-1 text-[10px] text-zinc-500 mt-1">
                                   <Clock className="w-2.5 h-2.5" />
-                                  <span>Reset: {new Date(m.resetTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                  <span>Reset sau {formatResetCountdown(m.resetTime)}</span>
                                 </div>
                               )}
                             </div>

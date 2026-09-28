@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import Database from 'better-sqlite3';
-import { getDatabasePath } from '@/modules/database/database.config';
+import { getStandaloneDataSource } from '@/modules/database/database.config';
 import type { TrafficAuditConfig } from '@/modules/config/types';
 import { DEFAULT_APP_CONFIG } from '@/modules/config/types';
 import { getServerConfig } from '@/server/server-config';
@@ -17,6 +16,7 @@ import type {
   TrafficAuditStats,
 } from './traffic-audit.types';
 import type { TrafficClass } from './traffic-classifier';
+import { TrafficLog } from './entities/traffic-log.entity';
 
 export interface AuditHandle {
   id: string;
@@ -25,6 +25,7 @@ export interface AuditHandle {
   method?: string;
   url?: string;
   model?: string;
+  apiKeyId?: string;
 }
 
 export interface UpstreamAttemptHandle {
@@ -49,21 +50,21 @@ export interface DatabaseRepairResult {
 
 interface StoredTrafficLog {
   id: string;
+  apiKeyId: string | null;
   timestamp: number;
   method: string;
   endpoint: string;
   model: string | null;
   status: number;
-  latency_ms: number;
-  prompt_tokens: number;
-  completion_tokens: number;
-  total_tokens: number;
-  error_message: string | null;
+  latencyMs: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  errorMessage: string | null;
 }
 
 export class TrafficAuditService {
   private config: TrafficAuditConfig | null = null;
-  private db: Database.Database | null = null;
 
   private getConfig(): TrafficAuditConfig {
     return this.config ?? getServerConfig()?.traffic_audit ?? DEFAULT_APP_CONFIG.proxy.traffic_audit;
@@ -73,66 +74,48 @@ export class TrafficAuditService {
     return this.getConfig().enabled;
   }
 
-  private getDb(): Database.Database | null {
-    if (this.db) {
-      return this.db;
-    }
+  private async getRepository() {
     try {
-      const dbPath = getDatabasePath();
-      this.db = new Database(dbPath);
-      this.db.pragma('journal_mode = WAL');
-      this.db.exec(`
-        CREATE TABLE IF NOT EXISTS traffic_logs (
-          id TEXT PRIMARY KEY,
-          timestamp INTEGER NOT NULL,
-          method TEXT NOT NULL,
-          endpoint TEXT NOT NULL,
-          model TEXT,
-          status INTEGER NOT NULL,
-          latency_ms INTEGER NOT NULL DEFAULT 0,
-          prompt_tokens INTEGER DEFAULT 0,
-          completion_tokens INTEGER DEFAULT 0,
-          total_tokens INTEGER DEFAULT 0,
-          error_message TEXT
-        );
-        CREATE INDEX IF NOT EXISTS idx_traffic_logs_timestamp ON traffic_logs (timestamp DESC);
-        CREATE INDEX IF NOT EXISTS idx_traffic_logs_model ON traffic_logs (model);
-        CREATE INDEX IF NOT EXISTS idx_traffic_logs_status ON traffic_logs (status);
-      `);
-      return this.db;
+      const dataSource = await getStandaloneDataSource();
+      return dataSource.getRepository(TrafficLog);
     } catch (err) {
-      logger.warn('Could not initialize SQLite traffic_logs database:', err);
+      logger.warn('Could not obtain TypeORM traffic_logs repository:', err);
       return null;
     }
   }
 
-  private recordTraffic(log: StoredTrafficLog): void {
-    const db = this.getDb();
-    if (!db) {
+  private async recordTraffic(log: StoredTrafficLog): Promise<void> {
+    const repo = await this.getRepository();
+    if (!repo) {
       return;
     }
     try {
-      const stmt = db.prepare(`
-        INSERT INTO traffic_logs (
-          id, timestamp, method, endpoint, model, status, latency_ms,
-          prompt_tokens, completion_tokens, total_tokens, error_message
-        ) VALUES (
-          @id, @timestamp, @method, @endpoint, @model, @status, @latency_ms,
-          @prompt_tokens, @completion_tokens, @total_tokens, @error_message
-        )
-      `);
-      stmt.run(log);
+      const entity = repo.create({
+        id: log.id,
+        apiKeyId: log.apiKeyId,
+        timestamp: log.timestamp,
+        method: log.method,
+        endpoint: log.endpoint,
+        model: log.model,
+        status: log.status,
+        latencyMs: log.latencyMs,
+        promptTokens: log.promptTokens,
+        completionTokens: log.completionTokens,
+        totalTokens: log.totalTokens,
+        errorMessage: log.errorMessage,
+      });
+      await repo.insert(entity);
 
       // Keep max 10,000 records to prevent growth (5% sample check)
       if (Math.random() < 0.05) {
-        db.prepare(`
-          DELETE FROM traffic_logs WHERE id IN (
+        await repo.query(
+          `DELETE FROM traffic_logs WHERE id IN (
             SELECT id FROM traffic_logs ORDER BY timestamp DESC LIMIT -1 OFFSET 10000
-          )
-        `).run();
+          )`,
+        );
       }
     } catch (err) {
-      logger.warn('Failed to insert traffic log into SQLite', err);
+      logger.warn('Failed to insert traffic log via TypeORM', err);
     }
   }
 
@@ -160,6 +143,7 @@ export class TrafficAuditService {
       method: input.method,
       url: input.url,
       model: modelName,
+      apiKeyId: input.apiKeyId,
     };
 
     logger.info(`[Audit] --> ${input.method} ${input.url} (class: ${input.trafficClass}, id: ${handle.id.slice(0, 8)})`);
@@ -180,18 +164,19 @@ export class TrafficAuditService {
     }
 
     // Strictly save only non-sensitive metadata (NO prompt/chat content)
-    this.recordTraffic({
+    void this.recordTraffic({
       id: handle.id,
+      apiKeyId: input.apiKeyId ?? handle.apiKeyId ?? null,
       timestamp: handle.startedAt,
       method: handle.method || 'POST',
       endpoint: handle.url || '',
       model: handle.model || null,
       status,
-      latency_ms: duration,
-      prompt_tokens: input.usage?.inputTokens || 0,
-      completion_tokens: input.usage?.outputTokens || 0,
-      total_tokens: (input.usage?.inputTokens || 0) + (input.usage?.outputTokens || 0),
-      error_message: input.error
+      latencyMs: duration,
+      promptTokens: input.usage?.inputTokens || 0,
+      completionTokens: input.usage?.outputTokens || 0,
+      totalTokens: (input.usage?.inputTokens || 0) + (input.usage?.outputTokens || 0),
+      errorMessage: input.error
         ? input.error instanceof Error
           ? input.error.message
           : String(input.error)
@@ -244,49 +229,53 @@ export class TrafficAuditService {
   }
 
   public async list(input?: TrafficAuditListInput) {
-    const db = this.getDb();
-    if (!db) {
+    const repo = await this.getRepository();
+    if (!repo) {
       return { data: [], rows: [], total: 0 };
     }
     const limit = Math.min(input?.limit ?? 50, 100);
     const offset = input?.offset ?? 0;
 
     try {
-      const rows = db.prepare(`
-        SELECT 
-          id as requestId,
-          timestamp,
-          method,
-          endpoint,
-          model,
-          status,
-          latency_ms as latencyMs,
-          prompt_tokens as promptTokens,
-          completion_tokens as completionTokens,
-          total_tokens as totalTokens,
-          error_message as errorMessage
-        FROM traffic_logs
-        ORDER BY timestamp DESC
-        LIMIT ? OFFSET ?
-      `).all(limit, offset);
+      const [logs, total] = await repo.findAndCount({
+        order: { timestamp: 'DESC' },
+        take: limit,
+        skip: offset,
+      });
 
-      const totalResult: any = db.prepare(`SELECT count(*) as count FROM traffic_logs`).get();
-      const total = totalResult?.count ?? 0;
+      const rows = logs.map((log) => ({
+        requestId: log.id,
+        apiKeyId: log.apiKeyId,
+        timestamp: log.timestamp,
+        method: log.method,
+        endpoint: log.endpoint,
+        model: log.model,
+        status: log.status,
+        latencyMs: log.latencyMs,
+        promptTokens: log.promptTokens,
+        completionTokens: log.completionTokens,
+        totalTokens: log.totalTokens,
+        errorMessage: log.errorMessage,
+      }));
 
       return { data: rows, rows, total };
     } catch (err) {
-      logger.warn('Failed to query traffic logs from SQLite', err);
+      logger.warn('Failed to query traffic logs via TypeORM', err);
       return { data: [], rows: [], total: 0 };
     }
   }
 
   public async filterOptions() {
-    const db = this.getDb();
-    if (!db) {
+    const repo = await this.getRepository();
+    if (!repo) {
       return { models: [], operations: [], protocols: [] };
     }
     try {
-      const modelRows: any[] = db.prepare(`SELECT DISTINCT model FROM traffic_logs WHERE model IS NOT NULL`).all();
+      const modelRows: Array<{ model: string }> = await repo
+        .createQueryBuilder('log')
+        .select('DISTINCT log.model', 'model')
+        .where('log.model IS NOT NULL')
+        .getRawMany();
       return {
         models: modelRows.map((r) => r.model),
         operations: ['chat', 'messages', 'models'],
@@ -314,12 +303,11 @@ export class TrafficAuditService {
   }
 
   public async stats(): Promise<TrafficAuditStats> {
-    const db = this.getDb();
+    const repo = await this.getRepository();
     let rowCount = 0;
-    if (db) {
+    if (repo) {
       try {
-        const totalResult: any = db.prepare(`SELECT count(*) as count FROM traffic_logs`).get();
-        rowCount = totalResult?.count ?? 0;
+        rowCount = await repo.count();
       } catch {
         // ignore
       }
@@ -339,22 +327,23 @@ export class TrafficAuditService {
   }
 
   public async delete(id: string): Promise<number> {
-    const db = this.getDb();
-    if (!db) return 0;
+    const repo = await this.getRepository();
+    if (!repo) return 0;
     try {
-      const res = db.prepare(`DELETE FROM traffic_logs WHERE id = ?`).run(id);
-      return res.changes;
+      const res = await repo.delete(id);
+      return res.affected ?? 0;
     } catch {
       return 0;
     }
   }
 
   public async clear(_trafficClass: TrafficClass | null = null): Promise<number> {
-    const db = this.getDb();
-    if (!db) return 0;
+    const repo = await this.getRepository();
+    if (!repo) return 0;
     try {
-      const res = db.prepare(`DELETE FROM traffic_logs`).run();
-      return res.changes;
+      const logs = await repo.find();
+      await repo.remove(logs);
+      return logs.length;
     } catch {
       return 0;
     }
@@ -370,16 +359,7 @@ export class TrafficAuditService {
 
   public recordAdminOperation(_op: string, _affected?: number): void {}
 
-  public async close(): Promise<void> {
-    if (this.db) {
-      try {
-        this.db.close();
-      } catch {
-        // ignore
-      }
-      this.db = null;
-    }
-  }
+  public async close(): Promise<void> {}
 }
 
 export const trafficAuditService = new TrafficAuditService();

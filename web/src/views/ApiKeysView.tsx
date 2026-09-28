@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import type { ApiKeyItem } from '../types';
 import { api } from '../api/client';
-import { Key, Plus, Trash2, Copy, Check, Shield } from 'lucide-react';
+import { Key, Plus, Trash2, Copy, Check, Shield, Eye, EyeOff } from 'lucide-react';
 
 interface ApiKeysViewProps {
   apiKeys: ApiKeyItem[];
@@ -15,6 +15,8 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onReload }) =
   const [creating, setCreating] = useState(false);
   const [createdKeyData, setCreatedKeyData] = useState<any>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [revealedKey, setRevealedKey] = useState<string | null>(null);
+  const [revealingId, setRevealingId] = useState<string | null>(null);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,6 +61,36 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onReload }) =
     navigator.clipboard.writeText(text);
     setCopiedKey(text);
     setTimeout(() => setCopiedKey(null), 1500);
+  };
+
+  const handleCopyFullKey = async (id: string) => {
+    try {
+      setRevealingId(id);
+      const raw = await api.getRawApiKey(id);
+      await navigator.clipboard.writeText(raw);
+      setCopiedKey(raw);
+      setTimeout(() => setCopiedKey(null), 1500);
+    } catch (err: any) {
+      alert(`Không lấy được key đầy đủ: ${err.message}`);
+    } finally {
+      setRevealingId(null);
+    }
+  };
+
+  const handleReveal = async (id: string) => {
+    if (revealedKey) {
+      setRevealedKey(null);
+      return;
+    }
+    try {
+      setRevealingId(id);
+      const raw = await api.getRawApiKey(id);
+      setRevealedKey(raw);
+    } catch (err: any) {
+      alert(`Không lấy được key đầy đủ: ${err.message}`);
+    } finally {
+      setRevealingId(null);
+    }
   };
 
   const closeModal = () => {
@@ -115,13 +147,26 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onReload }) =
                     <td className="py-3.5 px-4 font-semibold text-zinc-200">{k.name}</td>
                     <td className="py-3.5 px-4 font-mono text-zinc-400">
                       <div className="flex items-center gap-2">
-                        <span>{k.key}</span>
+                        {revealedKey ? (
+                          <span className="text-emerald-300 text-[11px] break-all max-w-[220px]">{revealedKey}</span>
+                        ) : (
+                          <span>{k.key}</span>
+                        )}
                         <button
-                          onClick={() => copyToClipboard(k.key)}
+                          onClick={() => handleReveal(k.id)}
+                          disabled={revealingId === k.id}
                           className="p-1 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300"
-                          title="Copy"
+                          title={revealedKey ? 'Ẩn key' : 'Xem key đầy đủ'}
                         >
-                          {copiedKey === k.key ? (
+                          {revealedKey ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                        </button>
+                        <button
+                          onClick={() => handleCopyFullKey(k.id)}
+                          disabled={revealingId === k.id}
+                          className="p-1 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300"
+                          title="Copy key đầy đủ"
+                        >
+                          {copiedKey ? (
                             <Check className="w-3 h-3 text-emerald-400" />
                           ) : (
                             <Copy className="w-3 h-3" />

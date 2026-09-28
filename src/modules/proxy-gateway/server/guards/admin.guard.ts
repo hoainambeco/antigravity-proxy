@@ -14,6 +14,7 @@ import {
   hasConfiguredApiKey,
   type RequestHeaders,
 } from "./api-key-auth.util";
+import { IS_PUBLIC_KEY } from "./public.decorator";
 
 @Injectable()
 export class AdminGuard implements CanActivate {
@@ -26,22 +27,22 @@ export class AdminGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    const handlerPublic = Reflect.getMetadata(
+      IS_PUBLIC_KEY,
+      context.getHandler(),
+    );
+    const classPublic = Reflect.getMetadata(
+      IS_PUBLIC_KEY,
+      context.getClass(),
+    );
+    if (handlerPublic || classPublic) {
+      return true;
+    }
+
     const request = context
       .switchToHttp()
       .getRequest<{ headers: RequestHeaders; ip?: string; socket?: any; raw?: any }>();
     const clientToken = extractApiKeyToken(request.headers);
-
-    const clientIp =
-      request.ip ||
-      request.raw?.socket?.remoteAddress ||
-      request.socket?.remoteAddress ||
-      "";
-    const isLoopback =
-      clientIp === "127.0.0.1" ||
-      clientIp === "::1" ||
-      clientIp === "::ffff:127.0.0.1" ||
-      clientIp.startsWith("127.") ||
-      clientIp === "localhost";
 
     const config = getServerConfig();
     const masterKey = (
@@ -65,13 +66,7 @@ export class AdminGuard implements CanActivate {
       throw new UnauthorizedException("Admin API key validation failed");
     }
 
-    // 2. Loopback / localhost: allow local administrative dashboard access
-    //    (remote access still requires a valid API key)
-    if (isLoopback) {
-      return true;
-    }
-
-    // 3. Otherwise require an API key
+    // 2. Otherwise require an API key
     throw new UnauthorizedException("API key is required");
   }
 }

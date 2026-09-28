@@ -105,6 +105,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs, onReload, is
               <thead className="bg-zinc-900/80 border-b border-zinc-800 text-zinc-400 font-medium uppercase tracking-wider">
                 <tr>
                   <th className="py-3 px-4">Thời gian</th>
+                  <th className="py-3 px-4">API Key</th>
                   <th className="py-3 px-4">Method & Route</th>
                   <th className="py-3 px-4">Model</th>
                   <th className="py-3 px-4">Status</th>
@@ -125,6 +126,11 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs, onReload, is
                     <tr key={log.requestId} className="hover:bg-zinc-900/50 transition-colors">
                       <td className="py-3 px-4 text-zinc-400 text-[11px]">
                         {new Date(log.timestamp).toLocaleTimeString()}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 text-[11px] font-mono">
+                          {log.apiKeyId ? log.apiKeyId.slice(0, 8) : '-'}
+                        </span>
                       </td>
                       <td className="py-3 px-4">
                         <span className="font-bold text-zinc-300 mr-2 text-[11px]">{log.method}</span>

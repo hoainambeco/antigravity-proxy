@@ -63,6 +63,7 @@ export interface ModelEntry {
 
 export interface AuditRecord {
   requestId: string;
+  apiKeyId?: string | null;
   method: string;
   endpoint: string;
   model?: string;
@@ -73,4 +74,13 @@ export interface AuditRecord {
   promptTokens?: number;
   completionTokens?: number;
   errorMessage?: string;
+}
+
+export interface AuthValidateResult {
+  valid: boolean;
+  keyId?: string | null;
+  keyName?: string | null;
+  role?: string;
+  isMaster?: boolean;
+  error?: string;
 }

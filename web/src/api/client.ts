@@ -1,4 +1,11 @@
-import type { Account, ApiKeyItem, AuditRecord, ModelEntry, SystemStatus } from '../types';
+import type {
+  Account,
+  ApiKeyItem,
+  AuditRecord,
+  AuthValidateResult,
+  ModelEntry,
+  SystemStatus,
+} from '../types';
 
 const BASE_URL = '';
 
@@ -31,6 +38,12 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  validateKey: (key: string) =>
+    fetchJson<AuthValidateResult>('/internal/auth/validate', {
+      method: 'POST',
+      body: JSON.stringify({ key }),
+    }),
+
   getSystemStatus: () => fetchJson<SystemStatus>('/internal/system/status'),
 
   getAccounts: async () => {
@@ -64,6 +77,13 @@ export const api = {
   getApiKeys: async () => {
     const res = await fetchJson<{ success: boolean; data: ApiKeyItem[] }>('/internal/api-keys');
     return res.data;
+  },
+
+  getRawApiKey: async (id: string) => {
+    const res = await fetchJson<{ success: boolean; key: string }>(
+      `/internal/api-keys/${encodeURIComponent(id)}/raw`,
+    );
+    return res.key;
   },
 
   createApiKey: (data: { name: string; role?: 'admin' | 'client'; description?: string }) =>

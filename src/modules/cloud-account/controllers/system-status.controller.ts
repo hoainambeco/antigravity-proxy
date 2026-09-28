@@ -1,10 +1,12 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, UseGuards } from '@nestjs/common';
 import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import { ApiKeyService } from '@/modules/api-key/api-key.service';
+import { AdminGuard } from '@/modules/proxy-gateway/server/guards/admin.guard';
 import { getServerConfig } from '@/server/server-config';
 import { getOpenAICompatibleModels } from '@/modules/proxy-gateway/antigravity/ModelMapping';
 
 @Controller('internal/system')
+@UseGuards(AdminGuard)
 export class SystemStatusController {
   constructor(
     private readonly accountLeaseService: AccountLeaseService,

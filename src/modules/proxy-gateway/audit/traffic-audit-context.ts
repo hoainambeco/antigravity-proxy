@@ -316,7 +316,11 @@ function completeHttpAuditState(
     mergeAuditUsage(state.responseUsage, extractAuditUsage(state.responseBody)),
     state.upstreamUsage,
   );
+  const apiKeyInfo = (state.request as unknown as {
+    apiKeyInfo?: { keyId?: string };
+  }).apiKeyInfo;
   trafficAuditService.completeParent(state.parent, {
+    apiKeyId: apiKeyInfo?.keyId,
     error: state.error,
     outcome: outcome ?? resolveHttpOutcome(status, state.error),
     partial: state.responsePartial,
@@ -384,7 +388,9 @@ function startHttpParent(request: FastifyRequest): AuditHandle | null {
   const clientIp = forwarded || firstHeader(headers['x-real-ip']) || request.ip;
   const protocol = inferProtocol(request.url);
   const url = request.url;
+  const apiKeyInfo = (request as unknown as { apiKeyInfo?: { keyId?: string } }).apiKeyInfo;
   return trafficAuditService.startParent({
+    apiKeyId: apiKeyInfo?.keyId,
     clientIp,
     headers,
     method: request.method,

@@ -6,14 +6,18 @@ import {
   Param,
   Query,
   Body,
+  Req,
+  UseGuards,
   HttpStatus,
   HttpException,
   Logger,
 } from '@nestjs/common';
+import type { FastifyRequest } from 'fastify';
 import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
-import { jsonAccountStoreInstance } from '@/modules/proxy-gateway/server/modules/account-lease/adapters/json-account.store';
 import { GoogleAPIService } from '@/modules/cloud-account/services/GoogleAPIService';
-import type { CloudAccount } from '@/modules/cloud-account/types';
+import { OAuthCallbackServer } from '@/modules/cloud-account/services/OAuthCallbackServer';
+import { AdminGuard } from '@/modules/proxy-gateway/server/guards/admin.guard';
+import { Public } from '@/modules/proxy-gateway/server/guards/public.decorator';
 
 interface OAuthCallbackDto {
   code: string;
@@ -21,10 +25,14 @@ interface OAuthCallbackDto {
 }
 
 @Controller('internal/accounts')
+@UseGuards(AdminGuard)
 export class AccountManagementController {
   private readonly logger = new Logger(AccountManagementController.name);
 
-  constructor(private readonly accountLeaseService: AccountLeaseService) {}
+  constructor(
+    private readonly accountLeaseService: AccountLeaseService,
+    private readonly oauthCallbackServer: OAuthCallbackServer,
+  ) {}
 
   @Get()
   async listAccounts() {
@@ -87,7 +95,11 @@ export class AccountManagementController {
   @Get('oauth/url')
   getOAuthUrl(@Query('redirect_uri') customRedirectUri?: string) {
     try {
-      const url = GoogleAPIService.getAuthUrl(undefined, customRedirectUri);
+      const redirectUri =
+        customRedirectUri ||
+        process.env.GOOGLE_OAUTH_REDIRECT_URI ||
+        this.oauthCallbackServer.getRedirectUri();
+      const url = GoogleAPIService.getAuthUrl(undefined, redirectUri);
       return { url };
     } catch (error) {
       this.logger.error('Failed to generate OAuth URL', error);
@@ -98,6 +110,37 @@ export class AccountManagementController {
     }
   }
 
+  @Public()
+  @Get('oauth/callback')
+  async oauthCallback(
+    @Req() req: FastifyRequest,
+    @Query('code') code?: string,
+    @Query('error') error?: string,
+  ) {
+    if (error || !code) {
+      return this.oauthCallbackServer.renderError(error || 'Thiếu mã code');
+    }
+
+    try {
+      // Reconstruct the exact redirect_uri that generated this auth URL so the
+      // token exchange matches what Google issued the code for.
+      const protocol = req.protocol || 'http';
+      const host = req.headers.host || req.hostname;
+      const redirectUri = `${protocol}://${host}/internal/accounts/oauth/callback`;
+      const account = await this.oauthCallbackServer.saveOAuthAccount(code, redirectUri);
+      return this.oauthCallbackServer.renderSuccess(
+        account.email,
+        account.id,
+      );
+    } catch (error) {
+      this.logger.error('OAuth callback failed', error);
+      return this.oauthCallbackServer.renderError(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  @Public()
   @Post('oauth/callback')
   async handleOAuthCallback(@Body() body: OAuthCallbackDto) {
     if (!body?.code) {
@@ -105,72 +148,18 @@ export class AccountManagementController {
     }
 
     try {
-      const tokens = await GoogleAPIService.exchangeCode(
-        body.code,
-        undefined,
-        undefined,
-        body.redirect_uri,
-      );
-
-      let email = 'unknown@gmail.com';
-      try {
-        const userInfo = await GoogleAPIService.getUserInfo(tokens.access_token);
-        if (userInfo.email) {
-          email = userInfo.email;
-        }
-      } catch {
-        this.logger.warn('Could not fetch email profile; using default');
-      }
-
-      let projectId = '';
-      try {
-        const projectContext = await GoogleAPIService.fetchProjectContext(tokens.access_token);
-        projectId = projectContext.projectId || '';
-      } catch {
-        this.logger.warn('Could not auto-fetch project context');
-      }
-
-      const accounts = await jsonAccountStoreInstance.getAccounts();
-      const existingIndex = accounts.findIndex((a) => a.email === email);
-      const accountId =
-        existingIndex !== -1
-          ? accounts[existingIndex].id
-          : `acc-${Date.now().toString().slice(-4)}`;
-
-      const newAccount: CloudAccount = {
-        id: accountId,
-        provider: 'google',
-        email,
-        created_at: Date.now(),
-        last_used: Date.now(),
-        token: {
-          access_token: tokens.access_token,
-          refresh_token: tokens.refresh_token,
-          expires_in: tokens.expires_in,
-          expiry_timestamp: Math.floor(Date.now() / 1000) + tokens.expires_in,
-          token_type: tokens.token_type || 'Bearer',
-          email,
-          project_id: projectId || undefined,
-        },
-        health: {},
-      };
-
-      try {
-        const quota = await GoogleAPIService.fetchQuota(tokens.access_token);
-        newAccount.quota = quota;
-      } catch (quotaErr) {
-        this.logger.warn('Initial quota fetch failed, will retry on background interval', quotaErr);
-      }
-
-      await jsonAccountStoreInstance.upsertAccount(newAccount);
-      await this.accountLeaseService.reloadAllAccounts();
+      const redirectUri =
+        body.redirect_uri ||
+        process.env.GOOGLE_OAUTH_REDIRECT_URI ||
+        this.oauthCallbackServer.getRedirectUri();
+      const account = await this.oauthCallbackServer.saveOAuthAccount(body.code, redirectUri);
 
       return {
         success: true,
         account: {
-          id: accountId,
-          email,
-          project_id: projectId,
+          id: account.id,
+          email: account.email,
+          project_id: account.token?.project_id || '',
         },
       };
     } catch (error) {

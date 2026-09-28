@@ -6,11 +6,17 @@ import { AccountsView } from './views/AccountsView';
 import { ModelsView } from './views/ModelsView';
 import { ApiKeysView } from './views/ApiKeysView';
 import { AuditLogsView } from './views/AuditLogsView';
+import { LoginView } from './views/LoginView';
 import { api } from './api/client';
 import type { Account, ApiKeyItem, AuditRecord, ModelEntry, SystemStatus } from './types';
 
+const ADMIN_KEY_STORAGE = 'antigravity_admin_key';
+
 export function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+  const [adminKey, setAdminKey] = useState<string | null>(
+    () => localStorage.getItem(ADMIN_KEY_STORAGE),
+  );
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [models, setModels] = useState<ModelEntry[]>([]);
@@ -18,6 +24,11 @@ export function App() {
   const [auditLogs, setAuditLogs] = useState<AuditRecord[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  const handleAuthed = (key: string) => {
+    localStorage.setItem(ADMIN_KEY_STORAGE, key);
+    setAdminKey(key);
+  };
 
   const loadData = useCallback(async () => {
     try {
@@ -82,7 +93,7 @@ export function App() {
     },
   };
 
-  return (
+  return adminKey ? (
     <div className="flex min-h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-emerald-500/30 selection:text-emerald-300">
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} statusPort={status?.port ?? 8044} />
 
@@ -122,6 +133,8 @@ export function App() {
         </main>
       </div>
     </div>
+  ) : (
+    <LoginView onAuthed={handleAuthed} />
   );
 }
 
