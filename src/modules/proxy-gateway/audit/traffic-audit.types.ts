@@ -24,6 +24,7 @@ export interface AuditPayloadFields {
 }
 
 export interface StartAuditParentInput {
+  apiKeyId?: string;
   clientIp?: string;
   headers?: Record<string, unknown>;
   method: string;
@@ -39,6 +40,7 @@ export interface StartAuditParentInput {
 }
 
 export interface CompleteAuditParentInput {
+  apiKeyId?: string;
   error?: unknown;
   mappedModel?: string;
   outcome: AuditOutcome;

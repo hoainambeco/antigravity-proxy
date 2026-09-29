@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DataSource, DataSourceOptions } from 'typeorm';
 import { ApiKey } from '../api-key/entities/api-key.entity';
+import { TrafficLog } from '../proxy-gateway/audit/entities/traffic-log.entity';
 
 export function getDatabasePath(): string {
   const customPath = process.env.SQLITE_DB_PATH || process.env.DATABASE_FILE;
@@ -21,7 +22,7 @@ export function createTypeOrmOptions(): DataSourceOptions {
   return {
     type: 'better-sqlite3',
     database: getDatabasePath(),
-    entities: [ApiKey],
+    entities: [ApiKey, TrafficLog],
     migrations: [path.join(__dirname, 'migrations/*{.ts,.js}')],
     migrationsRun: true,
     migrationsTableName: 'typeorm_migrations',

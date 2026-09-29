@@ -282,6 +282,11 @@ export class ApiKeyService implements OnModuleInit, OnModuleDestroy {
     return key;
   }
 
+  async getRawKey(id: string): Promise<string> {
+    const key = await this.getKeyById(id);
+    return key.key;
+  }
+
   async updateKey(id: string, dto: UpdateApiKeyDto): Promise<ApiKey> {
     const key = await this.getKeyById(id);
 

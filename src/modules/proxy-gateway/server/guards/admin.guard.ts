@@ -14,6 +14,7 @@ import {
   hasConfiguredApiKey,
   type RequestHeaders,
 } from "./api-key-auth.util";
+import { IS_PUBLIC_KEY } from "./public.decorator";
 
 @Injectable()
 export class AdminGuard implements CanActivate {
@@ -26,41 +27,46 @@ export class AdminGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context
-      .switchToHttp()
-      .getRequest<{ headers: RequestHeaders; ip?: string }>();
-    const clientToken = extractApiKeyToken(request.headers);
-
-    if (this.apiKeyService) {
-      if (!this.apiKeyService.hasConfiguredProtection()) {
-        throw new UnauthorizedException("Admin protection is not configured");
-      }
-
-      if (!clientToken) {
-        throw new UnauthorizedException("API key is required");
-      }
-
-      const isAdmin = await this.apiKeyService.validateAdminKey(clientToken);
-      if (isAdmin) {
-        return true;
-      }
-
-      this.logger.warn(`Rejected unauthorized admin request`);
-      throw new UnauthorizedException("Admin API key validation failed");
-    }
-
-    // Fallback if ApiKeyService is not registered
-    const config = getServerConfig();
-    const apiKey = config?.api_key;
-
-    if (!hasConfiguredApiKey(apiKey)) {
-      throw new UnauthorizedException("Admin API key is not configured");
-    }
-
-    if (clientToken && clientToken === apiKey) {
+    const handlerPublic = Reflect.getMetadata(
+      IS_PUBLIC_KEY,
+      context.getHandler(),
+    );
+    const classPublic = Reflect.getMetadata(
+      IS_PUBLIC_KEY,
+      context.getClass(),
+    );
+    if (handlerPublic || classPublic) {
       return true;
     }
 
-    throw new UnauthorizedException("API key validation failed");
+    const request = context
+      .switchToHttp()
+      .getRequest<{ headers: RequestHeaders; ip?: string; socket?: any; raw?: any }>();
+    const clientToken = extractApiKeyToken(request.headers);
+
+    const config = getServerConfig();
+    const masterKey = (
+      config?.api_key ||
+      process.env.PROXY_API_KEY ||
+      ""
+    ).trim();
+
+    // 1. If client provided a token, validate it
+    if (clientToken) {
+      if (this.apiKeyService) {
+        const isAdmin = await this.apiKeyService.validateAdminKey(clientToken);
+        if (isAdmin) {
+          return true;
+        }
+      }
+      if (hasConfiguredApiKey(masterKey) && clientToken === masterKey) {
+        return true;
+      }
+      this.logger.warn(`Rejected unauthorized admin request with invalid token`);
+      throw new UnauthorizedException("Admin API key validation failed");
+    }
+
+    // 2. Otherwise require an API key
+    throw new UnauthorizedException("API key is required");
   }
 }

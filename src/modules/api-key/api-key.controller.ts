@@ -9,9 +9,15 @@ import {
   Param,
   Patch,
   Post,
+  Req,
   UseGuards,
 } from "@nestjs/common";
+import type { FastifyRequest } from "fastify";
 import { AdminGuard } from "../proxy-gateway/server/guards/admin.guard";
+import {
+  extractApiKeyToken,
+  type RequestHeaders,
+} from "../proxy-gateway/server/guards/api-key-auth.util";
 import { ApiKeyService } from "./api-key.service";
 import { CreateApiKeyDto, UpdateApiKeyDto } from "./dto/api-key.dto";
 
@@ -40,6 +46,15 @@ export class ApiKeyController {
       data: created, // returns full raw key upon creation so user can copy it
       message:
         "API Key created successfully. Store the key securely as it will not be displayed in full again.",
+    };
+  }
+
+  @Get(":id/raw")
+  async getRawKey(@Param("id") id: string) {
+    const key = await this.apiKeyService.getRawKey(id);
+    return {
+      success: true,
+      key,
     };
   }
 

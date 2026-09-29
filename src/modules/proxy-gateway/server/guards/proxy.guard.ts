@@ -49,6 +49,40 @@ export class ProxyGuard implements CanActivate {
       const clientToken = extractApiKeyToken(request.headers);
       const surface = resolveAuthErrorSurface(request);
 
+      const clientIp =
+        request.ip ||
+        (request as any).raw?.socket?.remoteAddress ||
+        (request as any).socket?.remoteAddress ||
+        "";
+      const isLoopback =
+        clientIp === "127.0.0.1" ||
+        clientIp === "::1" ||
+        clientIp === "::ffff:127.0.0.1" ||
+        clientIp.startsWith("127.");
+
+      const rawReq = (request as any).raw;
+      const method = rawReq?.method || "GET";
+      const url = request.url || "";
+      const isModelCatalogRoute =
+        method === "GET" &&
+        (url === "/v1/models" ||
+          url.startsWith("/v1/models?") ||
+          url.startsWith("/v1/models/") ||
+          url === "/v1beta/models" ||
+          url.startsWith("/v1beta/models?") ||
+          url.startsWith("/v1beta/models/"));
+
+      // Allow viewing model list without requiring key on localhost/browser
+      if (isModelCatalogRoute && (isLoopback || !clientToken)) {
+        if (clientToken) {
+          const authResult = await this.apiKeyService.validateKey(clientToken);
+          if (authResult.valid) {
+            request.apiKeyInfo = authResult;
+          }
+        }
+        return true;
+      }
+
       if (!clientToken) {
         this.logger.warn(
           `Rejected request missing API key from ${request.ip} (${request.url})`,
