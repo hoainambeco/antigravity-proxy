@@ -16,6 +16,7 @@ export const vi: Translations = {
     delete: 'Xóa',
     sync: 'Đồng bộ',
     close: 'Đóng',
+    save: 'Lưu',
     done: 'Hoàn tất',
     actions: 'Thao tác',
     never: 'Chưa dùng',
@@ -23,6 +24,8 @@ export const vi: Translations = {
     active: 'Active',
     disabled: 'Disabled',
     cooldown: 'Cooldown',
+    confirm: 'Xác nhận',
+    confirmDeleteTitle: 'Xác nhận xóa',
   },
   navigation: {
     dashboard: 'Dashboard',
@@ -30,6 +33,7 @@ export const vi: Translations = {
     models: 'Models & Routing',
     apiKeys: 'API Keys',
     audit: 'Traffic & Logs',
+    routing: 'Routing Rules',
   },
   tabs: {
     dashboard: {
@@ -38,11 +42,13 @@ export const vi: Translations = {
     },
     accounts: {
       title: 'Quản lý Tài khoản & Quota',
-      subtitle: 'Danh sách các tài khoản Google Cloud Code và tiến trình hạn mức theo thời gian thực',
+      subtitle:
+        'Danh sách các tài khoản Google Cloud Code và tiến trình hạn mức theo thời gian thực',
     },
     models: {
       title: 'Danh mục Models & Routing',
-      subtitle: 'Các models đang khả dụng được phục vụ cho Cursor, Claude Code, Cline và OpenAI SDK',
+      subtitle:
+        'Các models đang khả dụng được phục vụ cho Cursor, Claude Code, Cline và OpenAI SDK',
     },
     apiKeys: {
       title: 'Quản lý Khóa API Key',
@@ -50,7 +56,13 @@ export const vi: Translations = {
     },
     audit: {
       title: 'Nhật ký Traffic & Lỗi',
-      subtitle: 'Lịch sử cuộc gọi, thời gian phản hồi, mã lỗi và token thống kê',
+      subtitle:
+        'Lịch sử cuộc gọi, thời gian phản hồi, mã lỗi và token thống kê',
+    },
+    routing: {
+      title: 'Pipeline định tuyến Model',
+      subtitle:
+        'Quản lý điều phối model theo quy tắc và chuỗi fallback giữa các nhóm provider',
     },
   },
   login: {
@@ -89,7 +101,8 @@ export const vi: Translations = {
     quotaSectionTitle: 'Hạn mức các Model chính',
     quotaSectionSubtitle: 'Tỷ lệ hạn mức % còn lại thu thập từ Google Upstream',
     accountDetailsLink: 'Chi tiết tài khoản →',
-    noAccountsWarning: 'Chưa có tài khoản nào được kết nối. Bấm "Thêm tài khoản" để bắt đầu.',
+    noAccountsWarning:
+      'Chưa có tài khoản nào được kết nối. Bấm "Thêm tài khoản" để bắt đầu.',
     noQuotaData: 'Chưa fetch quota hoặc không có model tiêu chuẩn.',
   },
   accounts: {
@@ -99,7 +112,8 @@ export const vi: Translations = {
     addAccountBtn: 'Thêm tài khoản Google',
     openingOAuth: 'Đang mở OAuth...',
     oauthOpenedTitle: 'Tab đăng nhập Google đã được mở!',
-    oauthBlockedHint: 'Nếu trình duyệt chặn popup, bạn có thể click trực tiếp vào link này:',
+    oauthBlockedHint:
+      'Nếu trình duyệt chặn popup, bạn có thể click trực tiếp vào link này:',
     noAccountsYet: 'Chưa có tài khoản Google nào',
     noAccountsSubhint:
       'Thêm tài khoản qua nút "Thêm tài khoản Google" hoặc chạy lệnh npm run add-account trên terminal.',
@@ -114,6 +128,130 @@ export const vi: Translations = {
     noQuotaSyncHint: 'Chưa có dữ liệu hạn mức. Bấm "Sync" để tải.',
     resetCountdown: 'Reset sau {time}',
     resettingNow: 'Đang reset',
+    claudeOAuthInitFailed: 'Khởi tạo Claude OAuth thất bại: {message}',
+    claudePasteCodeRequired: 'Vui lòng dán mã code hoặc URL callback từ trình duyệt',
+    claudeExchangeFailed: 'Đổi token Claude OAuth thất bại: {message}',
+    openaiOAuthInitFailed: 'Khởi tạo OpenAI OAuth thất bại: {message}',
+    openaiPasteCodeRequired: 'Vui lòng dán mã code hoặc URL callback từ trình duyệt',
+    openaiExchangeFailed: 'Đổi token OpenAI OAuth thất bại: {message}',
+    copilotPollError: 'Lỗi xác thực Copilot: {message}',
+    copilotStartFailed: 'Không thể bắt đầu xác thực Copilot: {message}',
+    copilotSaveFailed: 'Lưu tài khoản thất bại: {message}',
+    emailRequired: 'Vui lòng nhập Email định danh cho tài khoản',
+    jsonRequired: 'Vui lòng dán đoạn JSON',
+    jsonInvalid: 'Định dạng JSON không hợp lệ',
+    jsonTokenRequired: 'JSON phải chứa access token hoặc refresh token',
+    apiKeyRequired: 'Vui lòng nhập API Key',
+    sessionKeyRequired: 'Vui lòng nhập Claude.ai Session Key',
+    githubTokenRequired: 'Vui lòng nhập GitHub Copilot Token',
+    saveAccountFailed: 'Lưu tài khoản thất bại: {message}',
+    addAccount: {
+      title: 'Thêm Tài khoản Mới (Multi-Provider)',
+      googleTab: 'Google',
+      claudeTab: 'Claude',
+      copilotTab: 'Copilot',
+      openaiTab: 'OpenAI',
+      google: {
+        desc:
+          'Đăng nhập tài khoản Google Cloud Code / Antigravity qua OAuth tự động. Hệ thống sẽ tự cấp quyền và đồng bộ hạn mức quota.',
+        opening: 'Đang mở liên kết OAuth...',
+        openLogin: 'Mở trang đăng nhập Google',
+      },
+      anthropic: {
+        modeJson: 'Dán JSON claudeAiOauth',
+        modeOauth: 'Đăng nhập Claude OAuth',
+        modeApiKey: 'API Key',
+        modeWebSession: 'Web Session (Cookie)',
+        jsonDesc:
+          'Dán nguyên object JSON <code>claudeAiOauth</code> từ extension hoặc file <code>~/.claude.json</code>. Hệ thống sẽ tự dùng <code>refreshToken</code> để tự động cấp token mới khi hết hạn!',
+        emailLabelOptional: 'Email định danh (tùy chọn)',
+        jsonContentLabel: 'Nội dung JSON (chứa accessToken & refreshToken)',
+        oauthDesc:
+          'Đăng nhập trực tiếp với Claude Code OAuth (PKCE) như extension. Nhấn nút bên dưới để mở trang đăng nhập trên trình duyệt:',
+        openLogin: 'Mở trang đăng nhập Claude OAuth',
+        loginOpened: 'Đã mở trang đăng nhập Claude!',
+        callbackHint:
+          'Sau khi bấm Authorize, trình duyệt sẽ chuyển hướng đến trang callback. Hãy copy URL hoặc mã code và dán vào đây:',
+        codePlaceholder: 'Dán mã code hoặc toàn bộ URL callback...',
+        exchanging: 'Đang đổi token...',
+        completeLogin: 'Hoàn tất đăng nhập',
+        emailLabel: 'Email định danh',
+        apiKeyLabel: 'Anthropic API Key',
+        sessionKeyLabel: 'Claude.ai Cookie Session Key',
+      },
+      copilot: {
+        modeDevice: 'Đăng nhập GitHub Device Code (Khuyên dùng)',
+        modeToken: 'Nhập Token ghu_ thủ công',
+        deviceDesc:
+          'Đăng nhập GitHub Copilot giống hệt VS Code Extension. Bấm nút bên dưới để nhận mã 8 số và liên kết xác nhận trên GitHub:',
+        emailLabelOptional: 'Email định danh (tùy chọn)',
+        getCode: 'Lấy mã kích hoạt GitHub Copilot',
+        step1: 'Bước 1: Copy mã xác nhận 8 ký tự bên dưới:',
+        step2: 'Bước 2: Mở liên kết GitHub và dán mã xác nhận:',
+        open: 'Mở {uri}',
+        listening: 'Hệ thống đang tự động lắng nghe xác thực từ GitHub...',
+        emailLabel: 'Email định danh',
+        tokenLabel: 'GitHub Copilot Token (ghu_...)',
+      },
+      openai: {
+        modeJson: 'Dán JSON Codex/ChatGPT',
+        modeOauth: 'Đăng nhập OpenAI OAuth',
+        modeKey: 'OpenAI API Key',
+        jsonDesc:
+          'Dán nguyên nội dung từ file <code>~/.codex/auth.json</code> hoặc object chứa <code>tokens</code> (access_token & refresh_token). Proxy sẽ tự động làm mới token vĩnh viễn!',
+        emailLabelOptional: 'Email định danh (Tùy chọn)',
+        emailPlaceholder: 'Tự động nhận diện từ token hoặc nhập email',
+        jsonContentLabel: 'Nội dung JSON auth.json',
+        step1: 'Bước 1: Ủy quyền trên OpenAI',
+        openLogin: 'Mở trang đăng nhập OpenAI OAuth',
+        oauthDesc: 'Cửa sổ đăng nhập chính thức của OpenAI / Codex sẽ mở ra. Sau khi hoàn tất bấm Authorize.',
+        step2: 'Bước 2: Dán mã code hoặc URL callback',
+        codePlaceholder: 'Dán URL hoặc mã code nhận được từ trình duyệt...',
+        completing: 'Đang hoàn tất đăng nhập...',
+        confirmSave: 'Xác nhận & Lưu tài khoản',
+        emailLabel: 'Email định danh',
+        apiKeyLabel: 'OpenAI API Key',
+      },
+      cancel: 'Hủy',
+      saving: 'Đang lưu...',
+      saveAccount: 'Lưu tài khoản',
+    },
+  },
+  routing: {
+    title: 'Pipeline định tuyến Model',
+    subtitle:
+      'Quản lý điều phối model theo quy tắc và chuỗi fallback giữa các nhóm provider',
+    loadFailed: 'Tải cấu hình routing thất bại: {message}',
+    patternRequired: 'Pattern không được để trống',
+    pipelineRequired: 'Pipeline phải có ít nhất một provider',
+    deleteConfirmMessage: 'Bạn có chắc muốn xóa rule routing này?',
+    deleteConfirm: 'Xóa rule routing',
+    deleteConfirmTitle: 'Xóa rule routing',
+    saveFailed: 'Lưu thất bại: {message}',
+    invalidJson: 'Định dạng JSON không hợp lệ: {message}',
+    saved: 'Đã lưu!',
+    visualMode: 'Chế độ trực quan',
+    rawJsonMode: 'Chế độ JSON thô',
+    addRule: 'Thêm Rule',
+    editRule: 'Sửa Rule Routing',
+    deleteRule: 'Xóa Rule',
+    editTooltip: 'Sửa Rule',
+    deleteTooltip: 'Xóa Rule',
+    loading: 'Đang tải rule routing...',
+    ruleBasedTitle: 'Định tuyến Model theo Rule',
+    ruleBasedDesc:
+      'Xác định mẫu khớp model, chuỗi ưu tiên fallback, và định tuyến khi rate-limit giữa các nhóm provider.',
+    noRules: 'Chưa có rule routing tùy chỉnh. Pipeline mặc định sẽ được sử dụng.',
+    defaultPipelineTitle: 'Pipeline Mặc định (Fallback khi không có rule khớp)',
+    pipelineLabel: 'Pipeline:',
+    patternLabel: 'Model Regex Pattern',
+    patternPlaceholder: '^(claude-3-7-sonnet|claude-3-5-sonnet)',
+    descriptionLabel: 'Mô tả',
+    descriptionPlaceholder: 'Ưu tiên Antigravity, fallback sang nhóm Claude',
+    providersLabel: 'Chọn Provider theo thứ tự ưu tiên (Bấm để bật/tắt)',
+    cancel: 'Hủy',
+    saveRule: 'Lưu Rule',
+    saving: 'Đang lưu...',
   },
   models: {
     catalogTitle: 'Models Catalog ({count})',
@@ -124,7 +262,8 @@ export const vi: Translations = {
     cursorTitle: 'Cursor IDE / Cline / Roo Code',
     cursorInstruction: 'Settings → Models → OpenAI Override Base URL:',
     claudeCodeTitle: 'Claude Code CLI (Official)',
-    claudeCodeInstruction: 'Thiết lập biến môi trường trước khi chạy lệnh `claude`:',
+    claudeCodeInstruction:
+      'Thiết lập biến môi trường trước khi chạy lệnh `claude`:',
     copyModelId: 'Copy Model ID',
     thinkingTag: 'Thinking',
     anthropicTag: 'Anthropic',
@@ -135,7 +274,8 @@ export const vi: Translations = {
     description:
       'Tạo và cấp phát API Key cho từng máy tính hoặc từng tool (Cursor, Claude Code, Cline, Aider) sử dụng proxy.',
     createBtn: 'Tạo API Key mới',
-    noKeysYet: 'Chưa có API Key nào. Bấm "Tạo API Key mới" để tạo khóa truy cập.',
+    noKeysYet:
+      'Chưa có API Key nào. Bấm "Tạo API Key mới" để tạo khóa truy cập.',
     table: {
       name: 'Tên',
       apiKey: 'API Key',
@@ -163,7 +303,8 @@ export const vi: Translations = {
       accountsScopeLabel: 'Phân quyền tài khoản Google',
       allAccountsOption: 'Tất cả tài khoản kết nối (Mặc định)',
       customAccountsOption: 'Chỉ định tài khoản cụ thể',
-      selectAccountsHint: 'Chọn các tài khoản Google mà API Key này được phép truy cập:',
+      selectAccountsHint:
+        'Chọn các tài khoản Google mà API Key này được phép truy cập:',
       noAccountsConfigured: 'Chưa có tài khoản Google nào được kết nối',
       submitBtn: 'Tạo Key',
       submittingBtn: 'Đang tạo...',

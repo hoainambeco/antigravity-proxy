@@ -16,6 +16,7 @@ export interface Translations {
     delete: string;
     sync: string;
     close: string;
+    save: string;
     done: string;
     actions: string;
     never: string;
@@ -23,6 +24,8 @@ export interface Translations {
     active: string;
     disabled: string;
     cooldown: string;
+    confirm: string;
+    confirmDeleteTitle: string;
   };
   navigation: {
     dashboard: string;
@@ -30,6 +33,7 @@ export interface Translations {
     models: string;
     apiKeys: string;
     audit: string;
+    routing: string;
   };
   tabs: {
     dashboard: {
@@ -49,6 +53,10 @@ export interface Translations {
       subtitle: string;
     };
     audit: {
+      title: string;
+      subtitle: string;
+    };
+    routing: {
       title: string;
       subtitle: string;
     };
@@ -111,6 +119,122 @@ export interface Translations {
     noQuotaSyncHint: string;
     resetCountdown: string;
     resettingNow: string;
+    claudeOAuthInitFailed: string;
+    claudePasteCodeRequired: string;
+    claudeExchangeFailed: string;
+    openaiOAuthInitFailed: string;
+    openaiPasteCodeRequired: string;
+    openaiExchangeFailed: string;
+    copilotPollError: string;
+    copilotStartFailed: string;
+    copilotSaveFailed: string;
+    emailRequired: string;
+    jsonRequired: string;
+    jsonInvalid: string;
+    jsonTokenRequired: string;
+    apiKeyRequired: string;
+    sessionKeyRequired: string;
+    githubTokenRequired: string;
+    saveAccountFailed: string;
+    addAccount: {
+      title: string;
+      googleTab: string;
+      claudeTab: string;
+      copilotTab: string;
+      openaiTab: string;
+      google: {
+        desc: string;
+        opening: string;
+        openLogin: string;
+      };
+      anthropic: {
+        modeJson: string;
+        modeOauth: string;
+        modeApiKey: string;
+        modeWebSession: string;
+        jsonDesc: string;
+        emailLabelOptional: string;
+        jsonContentLabel: string;
+        oauthDesc: string;
+        openLogin: string;
+        loginOpened: string;
+        callbackHint: string;
+        codePlaceholder: string;
+        exchanging: string;
+        completeLogin: string;
+        emailLabel: string;
+        apiKeyLabel: string;
+        sessionKeyLabel: string;
+      };
+      copilot: {
+        modeDevice: string;
+        modeToken: string;
+        deviceDesc: string;
+        emailLabelOptional: string;
+        getCode: string;
+        step1: string;
+        step2: string;
+        open: string;
+        listening: string;
+        emailLabel: string;
+        tokenLabel: string;
+      };
+      openai: {
+        modeJson: string;
+        modeOauth: string;
+        modeKey: string;
+        jsonDesc: string;
+        emailLabelOptional: string;
+        emailPlaceholder: string;
+        jsonContentLabel: string;
+        step1: string;
+        openLogin: string;
+        oauthDesc: string;
+        step2: string;
+        codePlaceholder: string;
+        completing: string;
+        confirmSave: string;
+        emailLabel: string;
+        apiKeyLabel: string;
+      };
+      cancel: string;
+      saving: string;
+      saveAccount: string;
+    };
+  };
+  routing: {
+    title: string;
+    subtitle: string;
+    loadFailed: string;
+    patternRequired: string;
+    pipelineRequired: string;
+    deleteConfirm: string;
+    deleteConfirmTitle: string;
+    saveFailed: string;
+    invalidJson: string;
+    saved: string;
+    visualMode: string;
+    rawJsonMode: string;
+    addRule: string;
+    editRule: string;
+    deleteRule: string;
+    editTooltip: string;
+    deleteTooltip: string;
+    loading: string;
+    ruleBasedTitle: string;
+    ruleBasedDesc: string;
+    noRules: string;
+    defaultPipelineTitle: string;
+    pipelineLabel: string;
+    patternLabel: string;
+    patternPlaceholder: string;
+    descriptionLabel: string;
+    descriptionPlaceholder: string;
+    providersLabel: string;
+    cancel: string;
+    saveRule: string;
+    saving: string;
+    deleteConfirmMessage: string;
   };
   models: {
     catalogTitle: string;

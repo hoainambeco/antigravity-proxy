@@ -57,35 +57,74 @@ npm install
 
 You can add multiple Google Cloud accounts using either the CLI wizard or manual JSON editing.
 
-#### Method A: Interactive CLI Login (Recommended)
-Simply run:
+#### Method A: CLI Account Management (Recommended)
+Add any account type via CLI:
 ```bash
+# 1. Add Google Cloud / Antigravity Account (Interactive OAuth)
 npm run add-account
-```
-- A Google OAuth login link will be opened in your browser (or printed in the terminal).
-- Sign in with your Google Account and grant permissions.
-- The CLI will automatically receive the OAuth tokens, retrieve your email and Google Cloud Project ID, and append the account to `accounts.json`.
-- Repeat `npm run add-account` to add as many accounts as you want!
 
-#### Method B: Manual Configuration
-Alternatively, copy `accounts.json.example` to `accounts.json`:
-```bash
-cp accounts.json.example accounts.json
+# 2. Add Anthropic Claude API Key
+npm run add-account -- --provider anthropic --key sk-ant-api03-... --email user@example.com
+
+# 3. Add Claude.ai Web Session (Cookie)
+npm run add-account -- --provider anthropic --session sk-ant-sid01-... --email user@example.com
+
+# 4. Add GitHub Copilot Token (ghu_...)
+npm run add-account -- --provider copilot --token ghu_... --email user@example.com
+
+# 5. Add OpenAI Platform API Key (sk-proj-...)
+npm run add-account -- --provider openai --key sk-proj-... --email user@example.com
 ```
-And add your accounts:
+
+#### Method B: Manual Configuration (`accounts.json`)
+Alternatively, copy `accounts.json.example` to `accounts.json` and add your accounts directly:
 ```json
 [
   {
-    "id": "account-1",
+    "id": "agy-1",
+    "provider": "google",
     "email": "user1@gmail.com",
     "token": {
       "refresh_token": "1//04_YOUR_GOOGLE_REFRESH_TOKEN",
       "access_token": "ya29.YOUR_ACCESS_TOKEN",
       "project_id": "your-gcp-project-id"
-    },
-    "health": {}
+    }
+  },
+  {
+    "id": "claude-api-1",
+    "provider": "anthropic",
+    "auth_type": "api_key",
+    "email": "claude@example.com",
+    "api_key": "sk-ant-api03-..."
+  },
+  {
+    "id": "copilot-1",
+    "provider": "copilot",
+    "auth_type": "copilot_token",
+    "email": "copilot@example.com",
+    "github_token": "ghu_..."
   }
 ]
+```
+
+### 3. Rule-Based Routing (`routing.json`)
+Customize the priority and failover pipeline for each model:
+```json
+{
+  "rules": [
+    {
+      "pattern": "^(claude-3-7-sonnet|claude-3-5-sonnet)",
+      "pipeline": ["google", "anthropic_api", "anthropic_oauth", "anthropic_web"],
+      "description": "Prioritize Antigravity, fallback to Anthropic pool on 429"
+    },
+    {
+      "pattern": "^(gpt-4o|o1|o3|codex)",
+      "pipeline": ["copilot", "openai_api", "chatgpt_web", "google"],
+      "description": "Prioritize Copilot & OpenAI, fallback to Google transpile"
+    }
+  ],
+  "default_pipeline": ["google", "anthropic_api", "copilot", "openai_api"]
+}
 ```
 
 ### 3. Configure Environment

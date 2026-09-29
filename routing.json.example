@@ -1,0 +1,37 @@
+{
+  "rules": [
+    {
+      "pattern": "^(claude-3-7-sonnet|claude-3-5-sonnet|claude-sonnet|claude-opus|claude-haiku|claude-)",
+      "pipeline": [
+        "google",
+        "anthropic_api",
+        "anthropic_oauth",
+        "anthropic_web"
+      ],
+      "description": "Claude models: Prioritize Antigravity (free quota), then fallback to Anthropic pool"
+    },
+    {
+      "pattern": "^(gpt-4o|o1|o3|codex|gpt-4|gpt-3|chatgpt)",
+      "pipeline": [
+        "copilot",
+        "openai_api",
+        "chatgpt_web",
+        "google"
+      ],
+      "description": "Codex / GPT models: Prioritize Copilot & OpenAI, fallback to Google transpile"
+    },
+    {
+      "pattern": "^(gemini-|imagen)",
+      "pipeline": [
+        "google"
+      ],
+      "description": "Google Native: Direct to Google Antigravity"
+    }
+  ],
+  "default_pipeline": [
+    "google",
+    "anthropic_api",
+    "copilot",
+    "openai_api"
+  ]
+}

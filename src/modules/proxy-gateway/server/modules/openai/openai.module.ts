@@ -5,6 +5,7 @@ import { FilesModule } from '../files/files.module';
 import { SharedServicesModule } from '../../shared/shared-services.module';
 import { AccountLeaseModule } from '../account-lease/account-lease.module';
 import { GeminiModule } from '../gemini/gemini.module';
+import { DispatcherModule } from '@/modules/proxy-gateway/dispatcher/dispatcher.module';
 import { IMAGE_QUOTA_REFRESH, OpenAIOperations } from './openai-operations.service';
 import { OpenAIChatController } from './openai-chat.controller';
 import { OpenAIMediaController } from './openai-media.controller';
@@ -16,7 +17,7 @@ import { OpenAIResponsesStoreController } from './responses/openai-responses-sto
 import { OpenAIResponsesController } from './responses/openai-responses.controller';
 
 @Module({
-  imports: [AccountLeaseModule, FilesModule, GeminiModule, SharedServicesModule],
+  imports: [AccountLeaseModule, FilesModule, GeminiModule, SharedServicesModule, DispatcherModule],
   controllers: [
     OpenAIModelsController,
     OpenAIChatController,

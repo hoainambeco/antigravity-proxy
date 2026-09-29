@@ -89,50 +89,80 @@ cp .env.example .env
 
 ---
 
-## 4. Quản lý Tài khoản (Thêm nhiều tài khoản)
+## 4. Quản lý Tài khoản Đa Nền Tảng (Multi-Provider)
 
-Hệ thống lưu trữ toàn bộ thông tin tài khoản tại file `accounts.json`. Bạn có 2 cách để thêm tài khoản:
+Hệ thống hỗ trợ gộp đồng thời nhiều loại tài khoản: **Google Antigravity**, **Anthropic Claude**, và **OpenAI / GitHub Copilot**.
 
-### Cách 1: Đăng nhập tự động qua Terminal (Khuyên dùng) 🚀
-Chạy lệnh sau trên terminal:
+### Cách 1: Thêm tài khoản qua Terminal CLI 🚀
 ```bash
+# 1. Thêm tài khoản Google Cloud / Antigravity (Đăng nhập tự động qua OAuth):
 npm run add-account
+
+# 2. Thêm Anthropic API Key (sk-ant-api03-...):
+npm run add-account -- --provider anthropic --key sk-ant-api03-... --email user@example.com
+
+# 3. Thêm Claude.ai Web Session (Cookie sk-ant-sid01-...):
+npm run add-account -- --provider anthropic --session sk-ant-sid01-... --email user@example.com
+
+# 4. Thêm GitHub Copilot Token (ghu_...):
+npm run add-account -- --provider copilot --token ghu_... --email user@example.com
+
+# 5. Thêm OpenAI Platform API Key (sk-proj-...):
+npm run add-account -- --provider openai --key sk-proj-... --email user@example.com
 ```
 
-**Quy trình:**
-1. Script sẽ mở cổng callback (8888 - 8892) và tự động mở trình duyệt đến trang đăng nhập Google (hoặc in URL màu xanh ra terminal nếu bạn dùng qua SSH/VPS).
-2. Bạn đăng nhập tài khoản Google và bấm cho phép quyền truy cập.
-3. Trình duyệt hiển thị thông báo *"✅ Đăng nhập thành công"*.
-4. Script tự động lấy `refresh_token`, `access_token`, email và tự truy vấn `project_id` trên Google Cloud, sau đó ghi trực tiếp vào file `accounts.json`.
-5. Tiếp tục chạy lại `npm run add-account` để thêm các tài khoản tiếp theo.
-
 ### Cách 2: Điền thủ công vào file `accounts.json`
-Tạo hoặc mở file `accounts.json` và thêm các tài khoản theo định dạng:
 ```json
 [
   {
-    "id": "acc-1",
+    "id": "agy-1",
     "provider": "google",
     "email": "user1@gmail.com",
     "token": {
-      "refresh_token": "1//04_REFRESH_TOKEN_CUA_BAN_1",
+      "refresh_token": "1//04_REFRESH_TOKEN",
       "access_token": "",
       "project_id": "your-gcp-project-1"
-    },
-    "health": {}
+    }
   },
   {
-    "id": "acc-2",
-    "provider": "google",
-    "email": "user2@gmail.com",
-    "token": {
-      "refresh_token": "1//04_REFRESH_TOKEN_CUA_BAN_2",
-      "access_token": "",
-      "project_id": "your-gcp-project-2"
-    },
-    "health": {}
+    "id": "claude-1",
+    "provider": "anthropic",
+    "auth_type": "api_key",
+    "email": "claude@example.com",
+    "api_key": "sk-ant-api03-..."
+  },
+  {
+    "id": "copilot-1",
+    "provider": "copilot",
+    "auth_type": "copilot_token",
+    "email": "copilot@example.com",
+    "github_token": "ghu_..."
   }
 ]
+```
+
+### Cấu hình Rule-Based Routing (`routing.json`)
+Bạn có thể cấu hình thứ tự ưu tiên (pipeline) và tự động chuyển nguồn khi gặp lỗi rate-limit (429) trong file `routing.json`:
+```json
+{
+  "rules": [
+    {
+      "pattern": "^(claude-3-7-sonnet|claude-3-5-sonnet)",
+      "pipeline": ["google", "anthropic_api", "anthropic_oauth", "anthropic_web"],
+      "description": "Ưu tiên dùng Antigravity (miễn phí), dính 429 thì fallback sang pool Claude"
+    },
+    {
+      "pattern": "^(gpt-4o|o1|o3|codex)",
+      "pipeline": ["copilot", "openai_api", "chatgpt_web", "google"],
+      "description": "Ưu tiên Copilot & OpenAI, fallback sang Google transpile"
+    },
+    {
+      "pattern": "^(gemini-|imagen)",
+      "pipeline": ["google"]
+    }
+  ],
+  "default_pipeline": ["google", "anthropic_api", "copilot", "openai_api"]
+}
 ```
 > **Ghi chú:** `access_token` có thể để trống `""`. Khi server chạy, nó sẽ tự động dùng `refresh_token` để lấy access token mới.
 >

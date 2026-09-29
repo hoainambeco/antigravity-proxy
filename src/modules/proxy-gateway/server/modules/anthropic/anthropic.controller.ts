@@ -17,6 +17,7 @@ import {
   expandFileReferences,
   FileReferenceError,
 } from '@/modules/proxy-gateway/server/modules/files/file-reference-expander';
+import { UpstreamDispatcherService } from '@/modules/proxy-gateway/dispatcher/upstream-dispatcher.service';
 import { AnthropicService } from './anthropic.service';
 
 @Controller('v1')
@@ -25,6 +26,7 @@ export class AnthropicController extends BaseProxyController {
   constructor(
     @Inject(AnthropicService) private readonly proxyService: AnthropicService,
     @Optional() @Inject(FilesService) private readonly files?: FilesService,
+    @Optional() @Inject(UpstreamDispatcherService) private readonly dispatcher?: UpstreamDispatcherService,
   ) {
     super();
   }
@@ -48,6 +50,14 @@ export class AnthropicController extends BaseProxyController {
   async anthropicMessages(@Body() body: AnthropicChatRequest, @Res() res: FastifyReply) {
     try {
       const request = await this.expandFileHandles(body);
+
+      if (this.dispatcher) {
+        const handled = await this.dispatcher.dispatchAnthropicMessages(request, res);
+        if (handled) {
+          return;
+        }
+      }
+
       const result = await this.proxyService.handleAnthropicMessages(request);
 
       if (body.stream && this.isObservableLike(result)) {

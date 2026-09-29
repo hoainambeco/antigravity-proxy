@@ -78,13 +78,44 @@ export interface CloudAccountHealth {
   };
 }
 
+export type CloudProvider = 'google' | 'anthropic' | 'openai' | 'copilot';
+
+export type AccountAuthType =
+  | 'oauth'
+  | 'api_key'
+  | 'web_session'
+  | 'cli_oauth'
+  | 'copilot_token';
+
+export interface ClaudeAiOAuthData {
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt?: number;
+  refreshTokenExpiresAt?: number;
+  scopes?: string[];
+  subscriptionType?: string;
+  rateLimitTier?: string;
+}
+
 export interface CloudAccount {
   id: string; // UUID
-  provider: 'google' | 'anthropic';
+  provider: CloudProvider;
+  auth_type?: AccountAuthType;
   email: string;
   name?: string | null;
   avatar_url?: string | null;
-  token: CloudTokenData;
+  api_key?: string;
+  session_key?: string;
+  organization_id?: string;
+  github_token?: string;
+  copilot_token?: string;
+  copilot_token_expires_at?: number;
+  claude_oauth?: ClaudeAiOAuthData;
+  claudeAiOauth?: ClaudeAiOAuthData;
+  account_id?: string;
+  openai_oauth?: any;
+  tokens?: any;
+  token?: CloudTokenData;
   quota?: CloudQuotaData;
   health?: CloudAccountHealth;
   device_profile?: DeviceProfile;
@@ -193,11 +224,25 @@ export const CloudAccountHealthSchema = z
 
 export const CloudAccountSchema = z.object({
   id: z.string(),
-  provider: z.enum(['google', 'anthropic']),
+  provider: z.enum(['google', 'anthropic', 'openai', 'copilot']),
+  auth_type: z
+    .enum(['oauth', 'api_key', 'web_session', 'cli_oauth', 'copilot_token'])
+    .optional(),
   email: z.string(), // Relaxed: was z.string().email() but caused validation issues with some formats
   name: z.string().optional().nullable(),
   avatar_url: z.string().optional().nullable(),
-  token: CloudTokenDataSchema,
+  api_key: z.string().optional(),
+  session_key: z.string().optional(),
+  organization_id: z.string().optional(),
+  github_token: z.string().optional(),
+  copilot_token: z.string().optional(),
+  copilot_token_expires_at: z.number().optional(),
+  claude_oauth: z.any().optional(),
+  claudeAiOauth: z.any().optional(),
+  account_id: z.string().optional(),
+  openai_oauth: z.any().optional(),
+  tokens: z.any().optional(),
+  token: CloudTokenDataSchema.optional(),
   quota: CloudQuotaDataSchema.optional(),
   health: CloudAccountHealthSchema.optional(),
   device_profile: DeviceProfileSchema.optional(),
@@ -222,10 +267,21 @@ export const CloudAccountExportSchema = z.object({
   exportedAt: z.number(),
   accounts: z.array(
     z.object({
-      provider: z.enum(['google', 'anthropic']),
+      provider: z.enum(['google', 'anthropic', 'openai', 'copilot']),
+      auth_type: z
+        .enum(['oauth', 'api_key', 'web_session', 'cli_oauth', 'copilot_token'])
+        .optional(),
       email: z.string(),
       name: z.string().optional().nullable(),
       avatar_url: z.string().optional().nullable(),
+      api_key: z.string().optional(),
+      session_key: z.string().optional(),
+      organization_id: z.string().optional(),
+      github_token: z.string().optional(),
+      copilot_token: z.string().optional(),
+      copilot_token_expires_at: z.number().optional(),
+      claude_oauth: z.any().optional(),
+      claudeAiOauth: z.any().optional(),
       token: CloudTokenDataSchema.optional(),
       quota: CloudQuotaDataSchema.optional(),
       device_profile: DeviceProfileSchema.optional(),

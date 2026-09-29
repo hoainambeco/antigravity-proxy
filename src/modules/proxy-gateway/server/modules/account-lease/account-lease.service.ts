@@ -9,7 +9,8 @@ import {
   Optional,
 } from '@nestjs/common';
 import type { CloudAccount, CloudAccountHealth } from '@/modules/cloud-account/types';
-import { RateLimitTrackerService } from '../../shared/services/rate-limit-tracker.service';
+import type { UpstreamProviderType } from '@/modules/proxy-gateway/routing/routing.types';
+import { RateLimitTrackerService, RateLimitReason } from '../../shared/services/rate-limit-tracker.service';
 import {
   ACCOUNT_LEASE_ACCOUNT_STORE,
   ACCOUNT_LEASE_UPSTREAM,
@@ -93,6 +94,8 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
   private readonly forbiddenCooldownMs = 30 * 60 * 1000;
 
   private tokens: Map<string, TokenData> = new Map();
+  private allAccounts: Map<string, CloudAccount> = new Map();
+  private providerRoundRobinIndex: Map<string, number> = new Map();
   private readonly configPolicy = new AccountLeaseConfigPolicy();
   private readonly quotaRefreshPolicy: AccountLeaseQuotaRefreshPolicy;
   private readonly tokenCache: AccountLeaseTokenCache;
@@ -237,6 +240,11 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
 
   async loadAccounts(): Promise<number> {
     try {
+      const rawAccounts = await this.accountStore.getAccounts();
+      this.allAccounts.clear();
+      for (const acc of rawAccounts) {
+        this.allAccounts.set(acc.id, acc);
+      }
       return await this.tokenCache.loadAccounts();
     } finally {
       this.syncImageSchedulerAccounts();
@@ -254,6 +262,11 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
   async reloadAllAccountsOrThrow(): Promise<number> {
     let count: number;
     try {
+      const rawAccounts = await this.accountStore.getAccounts();
+      this.allAccounts.clear();
+      for (const acc of rawAccounts) {
+        this.allAccounts.set(acc.id, acc);
+      }
       count = await this.tokenCache.loadAccountsOrThrow();
     } finally {
       this.syncImageSchedulerAccounts();
@@ -262,6 +275,85 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
     this.clearAllSessions();
     void this.syncAllAccountQuotas();
     return count;
+  }
+
+  public getAccountsForProvider(providerType: UpstreamProviderType): CloudAccount[] {
+    const accounts = Array.from(this.allAccounts.values());
+
+    return accounts.filter((acc) => {
+      if (acc.is_active === false) return false;
+      if (this.rateLimitTracker.isRateLimited(acc.id)) return false;
+
+      switch (providerType) {
+        case 'google':
+          return (
+            (acc.provider === 'google' || !acc.provider) &&
+            Boolean(acc.token?.access_token || acc.token?.refresh_token)
+          );
+        case 'anthropic_api':
+          return acc.provider === 'anthropic' && Boolean(acc.api_key);
+        case 'anthropic_oauth':
+          return (
+            acc.provider === 'anthropic' &&
+            Boolean(acc.token?.access_token || acc.token?.refresh_token)
+          );
+        case 'anthropic_web':
+          return (
+            acc.provider === 'anthropic' &&
+            Boolean(acc.session_key || acc.auth_type === 'web_session')
+          );
+        case 'copilot':
+          return (
+            (acc.provider === 'copilot' || acc.provider === 'openai') &&
+            Boolean(acc.github_token || acc.copilot_token || acc.auth_type === 'copilot_token')
+          );
+        case 'openai_api':
+          return acc.provider === 'openai' && Boolean(acc.api_key);
+        case 'chatgpt_web':
+          return (
+            acc.provider === 'openai' &&
+            (acc.auth_type === 'web_session' || Boolean(acc.token?.access_token))
+          );
+        default:
+          return false;
+      }
+    });
+  }
+
+  public getNextAccountForProvider(
+    providerType: UpstreamProviderType,
+    options?: { excludeAccountIds?: string[]; model?: string },
+  ): CloudAccount | null {
+    const candidates = this.getAccountsForProvider(providerType);
+    const excluded = new Set(options?.excludeAccountIds || []);
+    const available = candidates.filter((acc) => !excluded.has(acc.id));
+
+    if (available.length === 0) {
+      return null;
+    }
+
+    const currentIndex = this.providerRoundRobinIndex.get(providerType) || 0;
+    const selected = available[currentIndex % available.length];
+    this.providerRoundRobinIndex.set(providerType, currentIndex + 1);
+
+    selected.last_used = Date.now();
+    return selected;
+  }
+
+  public reportProviderRateLimit(
+    accountId: string,
+    providerType: UpstreamProviderType,
+    cooldownMs: number = 60_000,
+  ): void {
+    const resetTimeIso = new Date(Date.now() + cooldownMs).toISOString();
+    this.rateLimitTracker.setLockoutUntilIso(
+      accountId,
+      resetTimeIso,
+      RateLimitReason.RateLimitExceeded,
+    );
+    this.logger.warn(
+      `Account ${accountId} for provider ${providerType} marked as rate-limited until ${resetTimeIso}`,
+    );
   }
 
   clearAllSessions(): void {
@@ -277,6 +369,7 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
         id: account.id,
         email: account.email,
         provider: account.provider,
+        auth_type: account.auth_type,
         project_id: account.token?.project_id,
         created_at: account.created_at,
         last_used: account.last_used,

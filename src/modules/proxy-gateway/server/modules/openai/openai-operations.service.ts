@@ -57,6 +57,7 @@ import { parseGenerationInputImages } from '@/modules/proxy-gateway/server/modul
 import { safeStringifyPacket } from '@/shared/security/sensitiveDataMasking';
 import { BaseProxyController } from '@/modules/proxy-gateway/server/common/base-proxy.controller';
 import { setProxyResponseTimingHeaders } from '@/modules/proxy-gateway/server/common/proxy-response-timing';
+import { UpstreamDispatcherService } from '@/modules/proxy-gateway/dispatcher/upstream-dispatcher.service';
 import { resolveOpenAIImageUrl } from './openai-image-url';
 import { OpenAIService, type OpenAIResponsesExecutionContext } from './openai.service';
 export type { ResponsesRequestBody } from './responses/openai-responses-request';
@@ -139,6 +140,7 @@ export class OpenAIOperations extends BaseProxyController {
     @Inject(OpenAIChatCompletionService)
     storedCompletions?: OpenAIChatCompletionStoreLike,
     @Optional() @Inject(FilesService) private readonly files?: FilesService,
+    @Optional() @Inject(UpstreamDispatcherService) private readonly dispatcher?: UpstreamDispatcherService,
   ) {
     super();
     this.responsesSessions = responsesSessions ?? OpenAIResponsesSessionStore;
@@ -245,6 +247,13 @@ export class OpenAIOperations extends BaseProxyController {
         },
       });
       return;
+    }
+
+    if (this.dispatcher) {
+      const handled = await this.dispatcher.dispatchChatCompletions(body, res, req);
+      if (handled) {
+        return;
+      }
     }
 
     await this.respondOpenAIChatCompletions(body, res, req);
