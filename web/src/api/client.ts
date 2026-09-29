@@ -7,11 +7,12 @@ import type {
   RoutingConfig,
   SystemStatus,
 } from '../types';
+import { getAdminKey } from './keyStorage';
 
 const BASE_URL = '';
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
-  const savedKey = localStorage.getItem('antigravity_admin_key') || '';
+  const savedKey = getAdminKey() || '';
   const headers: Record<string, string> = {
     ...(options?.body ? { 'Content-Type': 'application/json' } : {}),
     ...(savedKey ? { Authorization: `Bearer ${savedKey}` } : {}),
@@ -48,20 +49,27 @@ export const api = {
   getSystemStatus: () => fetchJson<SystemStatus>('/internal/system/status'),
 
   getAccounts: async () => {
-    const res = await fetchJson<{ data: Account[]; total: number }>('/internal/accounts');
+    const res = await fetchJson<{ data: Account[]; total: number }>(
+      '/internal/accounts',
+    );
     return res.data;
   },
 
   syncAccounts: (id?: string) =>
     fetchJson<{ success: boolean; message: string }>(
-      id ? `/internal/accounts/sync?id=${encodeURIComponent(id)}` : '/internal/accounts/sync',
+      id
+        ? `/internal/accounts/sync?id=${encodeURIComponent(id)}`
+        : '/internal/accounts/sync',
       { method: 'POST' },
     ),
 
   deleteAccount: (id: string) =>
-    fetchJson<{ success: boolean; message: string }>(`/internal/accounts/${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-    }),
+    fetchJson<{ success: boolean; message: string }>(
+      `/internal/accounts/${encodeURIComponent(id)}`,
+      {
+        method: 'DELETE',
+      },
+    ),
 
   getOAuthUrl: (customRedirectUri?: string) =>
     fetchJson<{ url: string }>(
@@ -77,7 +85,12 @@ export const api = {
     }),
 
   initClaudeOAuth: (redirectUri?: string) =>
-    fetchJson<{ authUrl: string; codeVerifier: string; state: string; redirectUri: string }>(
+    fetchJson<{
+      authUrl: string;
+      codeVerifier: string;
+      state: string;
+      redirectUri: string;
+    }>(
       redirectUri
         ? `/internal/accounts/oauth/claude/init?redirect_uri=${encodeURIComponent(redirectUri)}`
         : '/internal/accounts/oauth/claude/init',
@@ -99,7 +112,12 @@ export const api = {
     ),
 
   initOpenAIOAuth: (redirectUri?: string) =>
-    fetchJson<{ authUrl: string; codeVerifier: string; state: string; redirectUri: string }>(
+    fetchJson<{
+      authUrl: string;
+      codeVerifier: string;
+      state: string;
+      redirectUri: string;
+    }>(
       redirectUri
         ? `/internal/accounts/oauth/openai/init?redirect_uri=${encodeURIComponent(redirectUri)}`
         : '/internal/accounts/oauth/openai/init',
@@ -136,24 +154,26 @@ export const api = {
       account?: any;
       message?: string;
       retryIntervalSeconds?: number;
-    }>(
-      '/internal/accounts/copilot/device/poll',
+    }>('/internal/accounts/copilot/device/poll', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  getRoutingConfig: async () => {
+    const res = await fetchJson<{ success: boolean; data: RoutingConfig }>(
+      '/internal/routing',
+    );
+    return res.data;
+  },
+
+  updateRoutingConfig: (data: RoutingConfig) =>
+    fetchJson<{ success: boolean; message: string; data: RoutingConfig }>(
+      '/internal/routing',
       {
         method: 'POST',
         body: JSON.stringify(data),
       },
     ),
-
-  getRoutingConfig: async () => {
-    const res = await fetchJson<{ success: boolean; data: RoutingConfig }>('/internal/routing');
-    return res.data;
-  },
-
-  updateRoutingConfig: (data: RoutingConfig) =>
-    fetchJson<{ success: boolean; message: string; data: RoutingConfig }>('/internal/routing', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
 
   getModels: async () => {
     const res = await fetchJson<{ data: ModelEntry[] }>('/v1/models');
@@ -161,7 +181,9 @@ export const api = {
   },
 
   getApiKeys: async () => {
-    const res = await fetchJson<{ success: boolean; data: ApiKeyItem[] }>('/internal/api-keys');
+    const res = await fetchJson<{ success: boolean; data: ApiKeyItem[] }>(
+      '/internal/api-keys',
+    );
     return res.data;
   },
 
@@ -178,12 +200,19 @@ export const api = {
 
   updateApiKey: (
     id: string,
-    data: { name?: string; isActive?: boolean; allowedAccountIds?: string[] | null },
+    data: {
+      name?: string;
+      isActive?: boolean;
+      allowedAccountIds?: string[] | null;
+    },
   ) =>
-    fetchJson<{ success: boolean; data: ApiKeyItem }>(`/internal/api-keys/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(data),
-    }),
+    fetchJson<{ success: boolean; data: ApiKeyItem }>(
+      `/internal/api-keys/${id}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      },
+    ),
 
   deleteApiKey: (id: string) =>
     fetchJson<{ success: boolean }>(`/internal/api-keys/${id}`, {
@@ -192,7 +221,9 @@ export const api = {
 
   getAuditRequests: async () => {
     try {
-      const res = await fetchJson<{ data: AuditRecord[] }>('/internal/audit/requests');
+      const res = await fetchJson<{ data: AuditRecord[] }>(
+        '/internal/audit/requests',
+      );
       return res.data || [];
     } catch {
       return [];

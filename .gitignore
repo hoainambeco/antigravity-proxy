@@ -1,6 +1,7 @@
 # --- Secrets and local state: never commit these ---
 # accounts.json holds Google OAuth refresh tokens; the SQLite database holds client API
-# keys in plaintext plus traffic audit logs containing full prompts and responses.
+# key hashes plus traffic audit metadata (model, status, token counts, error message).
+# Request/response bodies are NOT persisted by the audit layer.
 .env
 .env.local
 .env.*.local

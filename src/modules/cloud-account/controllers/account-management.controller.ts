@@ -1,26 +1,27 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Delete,
-  Param,
-  Query,
-  Body,
-  Req,
-  UseGuards,
-  HttpStatus,
-  HttpException,
-  Logger,
-} from '@nestjs/common';
-import type { FastifyRequest } from 'fastify';
-import { jsonAccountStoreInstance } from '@/modules/proxy-gateway/server/modules/account-lease/adapters/json-account.store';
-import type { CloudAccount } from '@/modules/cloud-account/types';
-import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import { GoogleAPIService } from '@/modules/cloud-account/services/GoogleAPIService';
+import { consumeGoogleOAuthState } from '@/modules/cloud-account/services/google-oauth-state';
 import { OAuthCallbackServer } from '@/modules/cloud-account/services/OAuthCallbackServer';
 import { OAuthProviderLoginService } from '@/modules/cloud-account/services/OAuthProviderLoginService';
+import type { CloudAccount, CloudProvider } from '@/modules/cloud-account/types';
 import { AdminGuard } from '@/modules/proxy-gateway/server/guards/admin.guard';
 import { Public } from '@/modules/proxy-gateway/server/guards/public.decorator';
+import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
+import { jsonAccountStoreInstance } from '@/modules/proxy-gateway/server/modules/account-lease/adapters/json-account.store';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpException,
+  HttpStatus,
+  Logger,
+  Param,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import type { FastifyRequest } from 'fastify';
 
 interface OAuthCallbackDto {
   code: string;
@@ -60,16 +61,25 @@ export class AccountManagementController {
     const rawOauth = body?.claudeAiOauth || body?.claude_oauth;
     const provider = body?.provider || (rawOauth ? 'anthropic' : undefined);
 
-    if (!provider) {
+    if (!provider || typeof provider !== 'string') {
       throw new HttpException('Provider is required', HttpStatus.BAD_REQUEST);
     }
+    const normalizedProvider = provider.toLowerCase() as CloudProvider;
+    const allowedProviders = ['google', 'anthropic', 'openai', 'copilot'];
+    if (!allowedProviders.includes(normalizedProvider)) {
+      throw new HttpException(
+        `Provider must be one of: ${allowedProviders.join(', ')}`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
 
-    const id = body.id || `acc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const id =
+      body.id || `acc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const email = body.email || `${provider}-${Date.now()}@antigravity.proxy`;
 
     const newAccount: CloudAccount = {
       id,
-      provider,
+      provider: normalizedProvider,
       auth_type: body.auth_type,
       email,
       name: body.name || null,
@@ -87,9 +97,10 @@ export class AccountManagementController {
       newAccount.auth_type = 'cli_oauth';
       newAccount.claude_oauth = rawOauth;
       newAccount.claudeAiOauth = rawOauth;
-      const expiresInSec = typeof rawOauth.expiresAt === 'number'
-        ? Math.max(60, Math.floor((rawOauth.expiresAt - Date.now()) / 1000))
-        : 86400;
+      const expiresInSec =
+        typeof rawOauth.expiresAt === 'number'
+          ? Math.max(60, Math.floor((rawOauth.expiresAt - Date.now()) / 1000))
+          : 86400;
 
       newAccount.token = {
         access_token: rawOauth.accessToken,
@@ -102,9 +113,14 @@ export class AccountManagementController {
     }
 
     const rawOpenAiOauth = body?.tokens || body?.openai_oauth;
-    if (rawOpenAiOauth && (provider === 'openai' || body?.auth_mode === 'chatgpt')) {
-      const accessToken = rawOpenAiOauth.access_token || rawOpenAiOauth.accessToken;
-      const refreshToken = rawOpenAiOauth.refresh_token || rawOpenAiOauth.refreshToken;
+    if (
+      rawOpenAiOauth &&
+      (normalizedProvider === 'openai' || body?.auth_mode === 'chatgpt')
+    ) {
+      const accessToken =
+        rawOpenAiOauth.access_token || rawOpenAiOauth.accessToken;
+      const refreshToken =
+        rawOpenAiOauth.refresh_token || rawOpenAiOauth.refreshToken;
       const idToken = rawOpenAiOauth.id_token || rawOpenAiOauth.idToken;
       const accountId = rawOpenAiOauth.account_id || rawOpenAiOauth.accountId;
 
@@ -117,7 +133,9 @@ export class AccountManagementController {
         try {
           const parts = idToken.split('.');
           if (parts.length === 3) {
-            const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+            const payload = JSON.parse(
+              Buffer.from(parts[1], 'base64url').toString('utf8'),
+            );
             if (payload.email) extractedEmail = payload.email;
           }
         } catch {
@@ -186,7 +204,8 @@ export class AccountManagementController {
         HttpStatus.BAD_REQUEST,
       );
     }
-    const account = await this.oauthProviderLoginService.exchangeClaudeCode(body);
+    const account =
+      await this.oauthProviderLoginService.exchangeClaudeCode(body);
     return { success: true, account };
   }
 
@@ -211,7 +230,8 @@ export class AccountManagementController {
         HttpStatus.BAD_REQUEST,
       );
     }
-    const account = await this.oauthProviderLoginService.exchangeOpenAICode(body);
+    const account =
+      await this.oauthProviderLoginService.exchangeOpenAICode(body);
     return { success: true, account };
   }
 
@@ -262,11 +282,12 @@ export class AccountManagementController {
     }
 
     try {
-      const account = await OAuthProviderLoginService.exchangeAndSaveOpenAiAccount({
-        code,
-        codeVerifier: pending.codeVerifier,
-        redirectUri: pending.redirectUri,
-      });
+      const account =
+        await OAuthProviderLoginService.exchangeAndSaveOpenAiAccount({
+          code,
+          codeVerifier: pending.codeVerifier,
+          redirectUri: pending.redirectUri,
+        });
       await this.accountLeaseService.loadAccounts();
       this.logger.log(`OpenAI OAuth callback succeeded for ${account.email}`);
       return html(
@@ -290,9 +311,14 @@ export class AccountManagementController {
   }
 
   @Post('copilot/device/poll')
-  async pollCopilotDeviceCode(@Body() body: { device_code: string; email?: string }) {
+  async pollCopilotDeviceCode(
+    @Body() body: { device_code: string; email?: string },
+  ) {
     if (!body?.device_code) {
-      throw new HttpException('device_code is required', HttpStatus.BAD_REQUEST);
+      throw new HttpException(
+        'device_code is required',
+        HttpStatus.BAD_REQUEST,
+      );
     }
     return await this.oauthProviderLoginService.pollCopilotDeviceCode(body);
   }
@@ -301,11 +327,18 @@ export class AccountManagementController {
   async syncAccounts(@Query('id') accountId?: string) {
     try {
       if (accountId) {
-        const synced = await this.accountLeaseService.syncSingleAccount(accountId);
+        const synced =
+          await this.accountLeaseService.syncSingleAccount(accountId);
         if (!synced) {
-          throw new HttpException('Account not found or sync failed', HttpStatus.BAD_REQUEST);
+          throw new HttpException(
+            'Account not found or sync failed',
+            HttpStatus.BAD_REQUEST,
+          );
         }
-        return { success: true, message: `Account ${accountId} synced successfully` };
+        return {
+          success: true,
+          message: `Account ${accountId} synced successfully`,
+        };
       }
 
       await this.accountLeaseService.syncAllAccountQuotas();
@@ -323,7 +356,8 @@ export class AccountManagementController {
   @Delete(':id')
   async deleteAccount(@Param('id') accountId: string) {
     try {
-      const deleted = await this.accountLeaseService.deleteAccountById(accountId);
+      const deleted =
+        await this.accountLeaseService.deleteAccountById(accountId);
       if (!deleted) {
         throw new HttpException('Account not found', HttpStatus.NOT_FOUND);
       }
@@ -362,9 +396,16 @@ export class AccountManagementController {
     @Req() req: FastifyRequest,
     @Query('code') code?: string,
     @Query('error') error?: string,
+    @Query('state') state?: string,
   ) {
     if (error || !code) {
       return this.oauthCallbackServer.renderError(error || 'Thiếu mã code');
+    }
+
+    if (!consumeGoogleOAuthState(state)) {
+      return this.oauthCallbackServer.renderError(
+        'Trạng thái OAuth không hợp lệ hoặc đã hết hạn. Vui lòng thử lại.',
+      );
     }
 
     try {
@@ -373,11 +414,11 @@ export class AccountManagementController {
       const protocol = req.protocol || 'http';
       const host = req.headers.host || req.hostname;
       const redirectUri = `${protocol}://${host}/internal/accounts/oauth/callback`;
-      const account = await this.oauthCallbackServer.saveOAuthAccount(code, redirectUri);
-      return this.oauthCallbackServer.renderSuccess(
-        account.email,
-        account.id,
+      const account = await this.oauthCallbackServer.saveOAuthAccount(
+        code,
+        redirectUri,
       );
+      return this.oauthCallbackServer.renderSuccess(account.email, account.id);
     } catch (error) {
       this.logger.error('OAuth callback failed', error);
       return this.oauthCallbackServer.renderError(
@@ -390,7 +431,10 @@ export class AccountManagementController {
   @Post('oauth/callback')
   async handleOAuthCallback(@Body() body: OAuthCallbackDto) {
     if (!body?.code) {
-      throw new HttpException('Authorization code is required', HttpStatus.BAD_REQUEST);
+      throw new HttpException(
+        'Authorization code is required',
+        HttpStatus.BAD_REQUEST,
+      );
     }
 
     try {
@@ -398,7 +442,10 @@ export class AccountManagementController {
         body.redirect_uri ||
         process.env.GOOGLE_OAUTH_REDIRECT_URI ||
         this.oauthCallbackServer.getRedirectUri();
-      const account = await this.oauthCallbackServer.saveOAuthAccount(body.code, redirectUri);
+      const account = await this.oauthCallbackServer.saveOAuthAccount(
+        body.code,
+        redirectUri,
+      );
 
       return {
         success: true,
@@ -411,7 +458,10 @@ export class AccountManagementController {
     } catch (error) {
       this.logger.error('OAuth token exchange failed', error);
       throw new HttpException(
-        { message: 'OAuth exchange failed', error: error instanceof Error ? error.message : String(error) },
+        {
+          message: 'OAuth exchange failed',
+          error: error instanceof Error ? error.message : String(error),
+        },
         HttpStatus.BAD_REQUEST,
       );
     }

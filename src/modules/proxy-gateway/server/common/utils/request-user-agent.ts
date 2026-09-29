@@ -1,13 +1,14 @@
+import { logger } from '@/shared/logging/logger';
 import axios from 'axios';
 import { isString } from 'lodash-es';
-import { logger } from '@/shared/logging/logger';
 
-const REMOTE_VERSION_URL = 'https://antigravity-auto-updater-974169037036.us-central1.run.app';
+const REMOTE_VERSION_URL =
+  'https://antigravity-auto-updater-974169037036.us-central1.run.app';
 const CHANGELOG_URL = 'https://antigravity.google/changelog';
 export const FALLBACK_VERSION = '2.0.3';
 const DEFAULT_REMOTE_TIMEOUT_MS = 2500;
 const VERSION_REGEX = /\d+\.\d+\.\d+/g;
-const userAgentHttpClient = axios.create();
+const userAgentHttpClient = axios.create({ maxRedirects: 0 });
 
 export function resolveLocalInstalledVersion(): string | null {
   return FALLBACK_VERSION;
@@ -23,7 +24,9 @@ interface UserAgentResolution {
 let cachedUserAgentResolution: UserAgentResolution | null = null;
 let pendingUserAgentResolution: Promise<UserAgentResolution> | null = null;
 
-function normalizeNonEmptyString(value: string | null | undefined): string | null {
+function normalizeNonEmptyString(
+  value: string | null | undefined,
+): string | null {
   if (!isString(value)) {
     return null;
   }
@@ -170,7 +173,10 @@ async function resolveDefaultUserAgentResolution(): Promise<UserAgentResolution>
   }
 
   const remoteVersion = await resolveRemoteVersion();
-  if (remoteVersion && compareSemverVersions(remoteVersion.version, bestVersion) > 0) {
+  if (
+    remoteVersion &&
+    compareSemverVersions(remoteVersion.version, bestVersion) > 0
+  ) {
     bestVersion = remoteVersion.version;
     bestSource = remoteVersion.source;
   }

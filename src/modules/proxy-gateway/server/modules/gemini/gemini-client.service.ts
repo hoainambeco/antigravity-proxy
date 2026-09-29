@@ -635,7 +635,7 @@ export class GeminiClient {
             'Content-Type': 'application/json',
             'User-Agent': requestUserAgent,
             ...projectHeaders,
-            ...(extraHeaders ?? {}),
+            ...extraHeaders,
           };
           if (isContentRequest) {
             for (const headerName of Object.keys(headers)) {

@@ -1,11 +1,25 @@
-import "dotenv/config";
-import { DEFAULT_APP_CONFIG, ProxyConfig } from "./modules/config/types";
-import { bootstrapNestServer, stopNestServer } from "./server/main";
-import { logger } from "./shared/logging/logger";
+// Must be the first import: it disables redirect-following on the shared axios
+// defaults before any module creates its own axios instance.
+import '@/shared/http/axios-hardening';
+import 'dotenv/config';
+import { MIN_CUSTOM_KEY_LENGTH } from './modules/api-key/api-key-hash';
+import { DEFAULT_APP_CONFIG, ProxyConfig } from './modules/config/types';
+import { bootstrapNestServer, stopNestServer } from './server/main';
+import { logger } from './shared/logging/logger';
 
 async function run() {
-  const port = parseInt(process.env.PORT || "8045", 10);
-  const apiKey = process.env.PROXY_API_KEY || "";
+  const port = parseInt(process.env.PORT || '8045', 10);
+  const apiKey = process.env.PROXY_API_KEY || '';
+
+  const trimmedMasterKey = apiKey.trim();
+  if (trimmedMasterKey && trimmedMasterKey.length < MIN_CUSTOM_KEY_LENGTH) {
+    logger.error(
+      `PROXY_API_KEY is set but shorter than ${MIN_CUSTOM_KEY_LENGTH} characters. ` +
+        `The proxy has no rate limiting, so a short master key is guessable by brute ` +
+        `force. Set a key of at least ${MIN_CUSTOM_KEY_LENGTH} characters and restart.`,
+    );
+    process.exit(1);
+  }
 
   const config: ProxyConfig = {
     ...DEFAULT_APP_CONFIG.proxy,
@@ -45,7 +59,7 @@ async function run() {
     console.log(`\nUse this with Cursor, Claude Code, Cline, OpenCode, etc.`);
     console.log(`======================================================\n`);
   } else {
-    const errorMsg = "message" in result ? result.message : "Unknown error";
+    const errorMsg = 'message' in result ? result.message : 'Unknown error';
     logger.error(`Failed to start proxy server: ${errorMsg}`);
     process.exit(1);
   }
@@ -56,11 +70,11 @@ async function run() {
     process.exit(0);
   };
 
-  process.on("SIGINT", () => shutdown("SIGINT"));
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
 }
 
 run().catch((err) => {
-  logger.error("Fatal error during startup:", err);
+  logger.error('Fatal error during startup:', err);
   process.exit(1);
 });

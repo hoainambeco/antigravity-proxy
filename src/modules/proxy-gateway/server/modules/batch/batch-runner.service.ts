@@ -197,7 +197,7 @@ export class BatchRunnerService {
   /** Resolves once nothing is in flight and every scheduled write has landed. */
   public async drain(): Promise<void> {
     while (this.settled.size > 0) {
-      await Promise.all([...this.settled]);
+      await Promise.all(this.settled);
     }
     await this.store.flush();
   }

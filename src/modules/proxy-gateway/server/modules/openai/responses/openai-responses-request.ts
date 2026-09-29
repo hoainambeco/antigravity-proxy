@@ -480,7 +480,7 @@ export function buildResponsesChatRequest(body: ResponsesRequestBody): OpenAICha
     response_format: toResponsesOpenAIResponseFormat(body.text?.format),
     stream: body.stream,
     extra: {
-      ...(body.metadata ?? {}),
+      ...body.metadata,
       previous_response_id: body.previous_response_id,
       user_id: body.user,
     },

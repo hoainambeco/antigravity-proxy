@@ -187,7 +187,7 @@ export function convertOpenAIToClaude(
     tool_choice: request.tool_choice,
     stream: request.stream,
     metadata: {
-      ...(request.extra ?? {}),
+      ...request.extra,
       source: 'openai',
       signature_session_key: signatureSessionKey,
     },

@@ -1,36 +1,36 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { isEmpty, isString } from 'lodash-es';
-import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
-import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
-import { v4 as uuidv4 } from 'uuid';
-import { Observable } from 'rxjs';
+import { optimizeApplyPatch } from '@/modules/proxy-gateway/antigravity/ApplyPatchPreflight';
 import { transformClaudeRequestIn } from '@/modules/proxy-gateway/antigravity/ClaudeRequestMapper';
-import { cleanImageModelName } from '@/modules/proxy-gateway/antigravity/ImageGenerationConfig';
-import {
-  isMalformedFunctionCallFinishReason,
-  MALFORMED_FUNCTION_CALL_RECOVERY_TEXT,
-} from '@/modules/proxy-gateway/antigravity/GeminiFinishReason';
 import { transformResponse } from '@/modules/proxy-gateway/antigravity/ClaudeResponseMapper';
-import { usesAuthoritativeThinkingBudget } from '@/modules/proxy-gateway/antigravity/model-variant-registry';
 import {
-  toOpenAIResponsesUsage,
-  toOpenAIUsageFromGeminiUsageMetadata,
-} from '@/modules/proxy-gateway/antigravity/OpenAIUsageMapper';
-import { OpenAIResponsesStreamingMapper } from '@/modules/proxy-gateway/antigravity/OpenAIResponsesStreamingMapper';
+  adaptCommandArguments,
+  selectClientCommandTool,
+} from '@/modules/proxy-gateway/antigravity/CommandToolAdapter';
 import {
   extractCustomToolInput,
   isCustomToolCall,
   toCustomToolArguments,
 } from '@/modules/proxy-gateway/antigravity/CustomToolCall';
-import { optimizeApplyPatch } from '@/modules/proxy-gateway/antigravity/ApplyPatchPreflight';
+import {
+  isMalformedFunctionCallFinishReason,
+  MALFORMED_FUNCTION_CALL_RECOVERY_TEXT,
+} from '@/modules/proxy-gateway/antigravity/GeminiFinishReason';
+import { cleanImageModelName } from '@/modules/proxy-gateway/antigravity/ImageGenerationConfig';
+import { decodeInternalSseData } from '@/modules/proxy-gateway/antigravity/internal-sse';
+import { usesAuthoritativeThinkingBudget } from '@/modules/proxy-gateway/antigravity/model-variant-registry';
+import { OpenAIResponsesStreamingMapper } from '@/modules/proxy-gateway/antigravity/OpenAIResponsesStreamingMapper';
+import {
+  toOpenAIResponsesUsage,
+  toOpenAIUsageFromGeminiUsageMetadata,
+} from '@/modules/proxy-gateway/antigravity/OpenAIUsageMapper';
+import { decodeSignature } from '@/modules/proxy-gateway/antigravity/signature-utils';
+import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
 import { splitNamespaceToolName } from '@/modules/proxy-gateway/antigravity/ToolNamespace';
 import {
-  adaptCommandArguments,
-  selectClientCommandTool,
-} from '@/modules/proxy-gateway/antigravity/CommandToolAdapter';
-import { SignatureStore } from '@/modules/proxy-gateway/antigravity/SignatureStore';
-import { decodeSignature } from '@/modules/proxy-gateway/antigravity/signature-utils';
-import { decodeInternalSseData } from '@/modules/proxy-gateway/antigravity/internal-sse';
+  ClaudeRequest,
+  ClaudeResponse,
+} from '@/modules/proxy-gateway/antigravity/types';
+import { getCurrentRequestLoopback } from '@/modules/proxy-gateway/audit/traffic-audit-context';
+import { BaseProxyService } from '@/modules/proxy-gateway/server/common/base-proxy.service';
 import {
   GeminiRequest,
   GeminiResponse,
@@ -38,24 +38,31 @@ import {
   OpenAIChatResponse,
   OpenAIUsage,
 } from '@/modules/proxy-gateway/server/common/interfaces/request-interfaces';
-import { resolveRequestUserAgent } from '@/modules/proxy-gateway/server/common/utils/request-user-agent';
-import {
-  applyOpenAIModelVariant,
-  rebindOpenAIModelVariant,
-} from '@/modules/proxy-gateway/server/shared/services/model-variant-request.service';
-import { safeStringifyPacket } from '@/shared/security/sensitiveDataMasking';
-import { BaseProxyService } from '@/modules/proxy-gateway/server/common/base-proxy.service';
 import {
   markProxyCleanComplete,
   markProxyNormalizationStarted,
 } from '@/modules/proxy-gateway/server/common/proxy-response-timing';
+import { resolveRequestUserAgent } from '@/modules/proxy-gateway/server/common/utils/request-user-agent';
+import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
+import { GeminiClient } from '@/modules/proxy-gateway/server/modules/gemini/gemini-client.service';
+import { GeminiService } from '@/modules/proxy-gateway/server/modules/gemini/gemini.service';
+import { GenerationConstraintsService } from '@/modules/proxy-gateway/server/shared/services/generation-constraints.service';
+import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/services/model-routing.service';
 import {
-  toGeminiUsageMetadata,
-  toResponsesGroundingMetadata,
-  toResponsesStreamPart,
-  toUnknownRecord,
-} from './responses/openai-responses-adapters';
-import { ClaudeRequest, ClaudeResponse } from '@/modules/proxy-gateway/antigravity/types';
+  applyOpenAIModelVariant,
+  rebindOpenAIModelVariant,
+} from '@/modules/proxy-gateway/server/shared/services/model-variant-request.service';
+import {
+  ProxyRetryService,
+  type ImageSchedulerPermit,
+} from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
+import { isGeminiImageModel } from '@/modules/proxy-gateway/server/shared/services/rate-limit-tracker.service';
+import { getServerConfig } from '@/server/server-config';
+import { safeStringifyPacket } from '@/shared/security/sensitiveDataMasking';
+import { Inject, Injectable } from '@nestjs/common';
+import { isEmpty, isString } from 'lodash-es';
+import { Observable } from 'rxjs';
+import { v4 as uuidv4 } from 'uuid';
 import {
   convertClaudeToOpenAIResponse,
   convertOpenAIToClaude,
@@ -64,17 +71,14 @@ import {
   mapGeminiFinishReasonToOpenAIFinishReason,
   parseOpenAIFunctionArguments,
 } from './chat/openai-claude-conversion';
-import { GenerationConstraintsService } from '@/modules/proxy-gateway/server/shared/services/generation-constraints.service';
-import { ModelRoutingService } from '@/modules/proxy-gateway/server/shared/services/model-routing.service';
-import {
-  ProxyRetryService,
-  type ImageSchedulerPermit,
-} from '@/modules/proxy-gateway/server/shared/services/proxy-retry.service';
-import { isGeminiImageModel } from '@/modules/proxy-gateway/server/shared/services/rate-limit-tracker.service';
-import { GeminiService } from '@/modules/proxy-gateway/server/modules/gemini/gemini.service';
 import { validateOpenAIInputAudio } from './chat/openai-input-audio';
 import { validateOpenAIResponseFormat } from './chat/openai-response-format';
-import { getServerConfig } from '@/server/server-config';
+import {
+  toGeminiUsageMetadata,
+  toResponsesGroundingMetadata,
+  toResponsesStreamPart,
+  toUnknownRecord,
+} from './responses/openai-responses-adapters';
 
 export type OpenAIOutputProtocol = 'chat-completions' | 'responses';
 
@@ -90,7 +94,8 @@ export class OpenAIService extends BaseProxyService {
     @Inject(AccountLeaseService) accountLeaseService: AccountLeaseService,
     @Inject(GeminiClient) geminiClient: GeminiClient,
     @Inject(GeminiService) private readonly geminiService: GeminiService,
-    @Inject(GenerationConstraintsService) generationConstraints: GenerationConstraintsService,
+    @Inject(GenerationConstraintsService)
+    generationConstraints: GenerationConstraintsService,
     @Inject(ProxyRetryService) retryPolicy: ProxyRetryService,
     @Inject(ModelRoutingService) modelRoutingPolicy: ModelRoutingService,
   ) {
@@ -127,12 +132,14 @@ export class OpenAIService extends BaseProxyService {
     const routingModel = routedRequest.model.toLowerCase().includes('-image')
       ? cleanImageModelName(routedRequest.model)
       : routedRequest.model;
-    const routeResolution = this.modelRoutingPolicy.resolveModelRouteForRequest(routingModel);
+    const routeResolution =
+      this.modelRoutingPolicy.resolveModelRouteForRequest(routingModel);
     const targetModel = routeResolution.resolvedModel;
     const enforceAuthoritativeThinkingBudget =
       usesAuthoritativeThinkingBudget(request.model) ||
       usesAuthoritativeThinkingBudget(targetModel);
-    const isImageRequest = isGeminiImageModel(routingModel) || isGeminiImageModel(targetModel);
+    const isImageRequest =
+      isGeminiImageModel(routingModel) || isGeminiImageModel(targetModel);
     const extraHeaders = this.createModelSpecificHeaders(request.model);
     this.logger.log(
       `OpenAI-compatible request received: model=${request.model}, mappedModel=${targetModel}, stream=${request.stream}, routeSource=${routeResolution.source}`,
@@ -164,12 +171,15 @@ export class OpenAIService extends BaseProxyService {
         if (lastError !== null) {
           throw this.resolveTerminalRetryError(retryState, lastError);
         }
-        throw new Error('No available accounts (all exhausted or rate limited)');
+        throw new Error(
+          'No available accounts (all exhausted or rate limited)',
+        );
       }
-      const effectiveTargetModel = this.accountLeaseService.resolveDynamicModelForAccount(
-        token.id,
-        targetModel,
-      );
+      const effectiveTargetModel =
+        this.accountLeaseService.resolveDynamicModelForAccount(
+          token.id,
+          targetModel,
+        );
       const effectiveVariantRequest = rebindOpenAIModelVariant(
         appliedVariantRequest,
         effectiveTargetModel,
@@ -181,7 +191,10 @@ export class OpenAIService extends BaseProxyService {
 
       markProxyNormalizationStarted();
       try {
-        const claudeRequest = this.convertOpenAIToClaude(accountRequest, signatureReadSessionKey);
+        const claudeRequest = this.convertOpenAIToClaude(
+          accountRequest,
+          signatureReadSessionKey,
+        );
         const projectId = token.token.project_id ?? '';
         const requestUserAgent = await resolveRequestUserAgent();
         const geminiBody = transformClaudeRequestIn(
@@ -196,7 +209,8 @@ export class OpenAIService extends BaseProxyService {
               quality: accountRequest.quality,
               size: accountRequest.size,
             },
-            signatureTargetFamily: effectiveVariantRequest.variant?.canonicalModel ?? null,
+            signatureTargetFamily:
+              effectiveVariantRequest.variant?.canonicalModel ?? null,
             signatureTargetFamilyModel: accountTargetModel,
           },
         );
@@ -235,7 +249,9 @@ export class OpenAIService extends BaseProxyService {
           } catch (streamError) {
             this.logger.warn(
               `Stream path failed for model=${request.model}; falling back to non-stream generation: ${
-                streamError instanceof Error ? streamError.message : String(streamError)
+                streamError instanceof Error
+                  ? streamError.message
+                  : String(streamError)
               }`,
             );
 
@@ -246,7 +262,11 @@ export class OpenAIService extends BaseProxyService {
               extraHeaders,
               signal,
             );
-            this.markUpstreamSuccessForResponse(token.id, geminiBody.model, response);
+            this.markUpstreamSuccessForResponse(
+              token.id,
+              geminiBody.model,
+              response,
+            );
             this.releaseImagePermit(retryState);
             this.logger.log(
               `Upstream response snippet after stream fallback: ${safeStringifyPacket(response).substring(0, 500)}`,
@@ -281,7 +301,11 @@ export class OpenAIService extends BaseProxyService {
             extraHeaders,
             signal,
           );
-          this.markUpstreamSuccessForResponse(token.id, geminiBody.model, response);
+          this.markUpstreamSuccessForResponse(
+            token.id,
+            geminiBody.model,
+            response,
+          );
           this.releaseImagePermit(retryState);
           this.logger.log(
             `Upstream response snippet (non-stream): ${safeStringifyPacket(response).substring(0, 500)}`,
@@ -297,7 +321,11 @@ export class OpenAIService extends BaseProxyService {
           this.logger.log(
             `Transformed Claude response snippet: ${safeStringifyPacket(claudeResponse).substring(0, 500)}`,
           );
-          return this.convertClaudeToOpenAIResponse(claudeResponse, request.model, clientToolNames);
+          return this.convertClaudeToOpenAIResponse(
+            claudeResponse,
+            request.model,
+            clientToolNames,
+          );
         }
       } catch (err) {
         if (err instanceof Error && this.isProjectContextError(err.message)) {
@@ -323,7 +351,8 @@ export class OpenAIService extends BaseProxyService {
                   quality: accountRequest.quality,
                   size: accountRequest.size,
                 },
-                signatureTargetFamily: effectiveVariantRequest.variant?.canonicalModel ?? null,
+                signatureTargetFamily:
+                  effectiveVariantRequest.variant?.canonicalModel ?? null,
                 signatureTargetFamilyModel: accountTargetModel,
               },
             );
@@ -365,7 +394,11 @@ export class OpenAIService extends BaseProxyService {
               extraHeaders,
               signal,
             );
-            this.markUpstreamSuccessForResponse(token.id, fallbackBody.model, response);
+            this.markUpstreamSuccessForResponse(
+              token.id,
+              fallbackBody.model,
+              response,
+            );
             this.releaseImagePermit(retryState);
             const claudeResponse = transformResponse(response, {
               model: fallbackBody.model,
@@ -404,22 +437,36 @@ export class OpenAIService extends BaseProxyService {
           }
           continue;
         }
-        const penaltyRecordedBeforeGrace = this.shouldRecordImagePenaltyBeforeGrace(
-          accountTargetModel,
-          lastError,
-        );
+        const penaltyRecordedBeforeGrace =
+          this.shouldRecordImagePenaltyBeforeGrace(
+            accountTargetModel,
+            lastError,
+          );
         if (penaltyRecordedBeforeGrace) {
-          await this.applyUpstreamPenalty(token.id, accountTargetModel, lastError);
+          await this.applyUpstreamPenalty(
+            token.id,
+            accountTargetModel,
+            lastError,
+          );
         }
         if (
           !appliedVariantRequest.variant &&
-          (await this.prepareCurrentGraceRetry(retryState, token, lastError, 'OpenAI-compatible'))
+          (await this.prepareCurrentGraceRetry(
+            retryState,
+            token,
+            lastError,
+            'OpenAI-compatible',
+          ))
         ) {
           i -= 1;
           continue;
         }
         if (!penaltyRecordedBeforeGrace) {
-          await this.applyUpstreamPenalty(token.id, accountTargetModel, lastError);
+          await this.applyUpstreamPenalty(
+            token.id,
+            accountTargetModel,
+            lastError,
+          );
         }
       }
     }
@@ -444,7 +491,11 @@ export class OpenAIService extends BaseProxyService {
     imagePermit?: ImageSchedulerPermit | null,
     responseId?: string,
   ): Observable<string> {
-    if (successAccountId && signatureSourceModel && !isGeminiImageModel(signatureSourceModel)) {
+    if (
+      successAccountId &&
+      signatureSourceModel &&
+      !isGeminiImageModel(signatureSourceModel)
+    ) {
       this.markUpstreamSuccess(successAccountId, signatureSourceModel);
     }
     if (outputProtocol === 'responses') {
@@ -552,8 +603,10 @@ export class OpenAIService extends BaseProxyService {
           subscriber.next(': ping\n\n');
         }
       }, 15_000);
-      const idleTimer = this.createStreamIdleTimer(upstreamStream, 'OpenAI-Responses-SSE', () =>
-        fail('upstream_timeout', 'Upstream response stream timed out.'),
+      const idleTimer = this.createStreamIdleTimer(
+        upstreamStream,
+        'OpenAI-Responses-SSE',
+        () => fail('upstream_timeout', 'Upstream response stream timed out.'),
       );
       idleTimer.reset();
 
@@ -586,10 +639,14 @@ export class OpenAIService extends BaseProxyService {
             }
 
             const responsePayload = decoded.response;
-            const usageMetadata = toGeminiUsageMetadata(responsePayload.usageMetadata);
+            const usageMetadata = toGeminiUsageMetadata(
+              responsePayload.usageMetadata,
+            );
             if (usageMetadata) {
               mapper.setUsage(
-                toOpenAIResponsesUsage(toOpenAIUsageFromGeminiUsageMetadata(usageMetadata)),
+                toOpenAIResponsesUsage(
+                  toOpenAIUsageFromGeminiUsageMetadata(usageMetadata),
+                ),
               );
             }
             const candidates = responsePayload.candidates;
@@ -613,7 +670,9 @@ export class OpenAIService extends BaseProxyService {
               }
             }
 
-            const grounding = toResponsesGroundingMetadata(candidate?.groundingMetadata);
+            const grounding = toResponsesGroundingMetadata(
+              candidate?.groundingMetadata,
+            );
             if (grounding) {
               for (const event of mapper.processGrounding(grounding)) {
                 sawMappedOutput = true;
@@ -621,7 +680,10 @@ export class OpenAIService extends BaseProxyService {
               }
             }
 
-            if (isString(candidate?.finishReason) && candidate.finishReason.length > 0) {
+            if (
+              isString(candidate?.finishReason) &&
+              candidate.finishReason.length > 0
+            ) {
               if (requiresCleanImageEnd) {
                 pendingFinishReason = candidate.finishReason;
                 continue;
@@ -650,19 +712,33 @@ export class OpenAIService extends BaseProxyService {
           return;
         }
         if (pendingFinishReason || (sawMappedOutput && !streamFailed)) {
-          if (requiresCleanImageEnd && successAccountId && sawImageData && !streamFailed) {
-            this.markUpstreamSuccess(successAccountId, signatureSourceModel ?? model);
+          if (
+            requiresCleanImageEnd &&
+            successAccountId &&
+            sawImageData &&
+            !streamFailed
+          ) {
+            this.markUpstreamSuccess(
+              successAccountId,
+              signatureSourceModel ?? model,
+            );
           }
           complete(pendingFinishReason ?? 'STOP');
         } else {
-          fail('upstream_interrupted', 'Upstream stream ended without output or a finish reason.');
+          fail(
+            'upstream_interrupted',
+            'Upstream stream ended without output or a finish reason.',
+          );
         }
       });
 
       upstreamStream.on('error', (error: unknown) => {
         idleTimer.clear();
-        const cleanError = error instanceof Error ? error : new Error(String(error));
-        this.logger.error(`OpenAI Responses stream error: ${cleanError.message}`);
+        const cleanError =
+          error instanceof Error ? error : new Error(String(error));
+        this.logger.error(
+          `OpenAI Responses stream error: ${cleanError.message}`,
+        );
         fail('upstream_stream_error', 'Upstream response stream failed.');
       });
 
@@ -704,7 +780,9 @@ export class OpenAIService extends BaseProxyService {
       const streamId = `chatcmpl-${uuidv4()}`;
       const created = Math.floor(Date.now() / 1000);
       if (this.shouldEmitCloudCodeMeta()) {
-        subscriber.next(this.createCloudCodeMetaChunk(this.createCloudCodeTraceId()));
+        subscriber.next(
+          this.createCloudCodeMetaChunk(this.createCloudCodeTraceId()),
+        );
       }
 
       const pushChunk = (payload: Record<string, unknown>): void => {
@@ -725,9 +803,13 @@ export class OpenAIService extends BaseProxyService {
         subscriber.complete();
       };
 
-      const idleTimer = this.createStreamIdleTimer(upstreamStream, 'OpenAI-SSE', () => {
-        fail('upstream_timeout', 'Upstream response stream timed out.');
-      });
+      const idleTimer = this.createStreamIdleTimer(
+        upstreamStream,
+        'OpenAI-SSE',
+        () => {
+          fail('upstream_timeout', 'Upstream response stream timed out.');
+        },
+      );
 
       idleTimer.reset();
 
@@ -758,7 +840,9 @@ export class OpenAIService extends BaseProxyService {
             }
 
             const responsePayload = decoded.response;
-            const usageMetadata = toGeminiUsageMetadata(responsePayload.usageMetadata);
+            const usageMetadata = toGeminiUsageMetadata(
+              responsePayload.usageMetadata,
+            );
             if (usageMetadata) {
               lastUsage = toOpenAIUsageFromGeminiUsageMetadata(usageMetadata);
             }
@@ -766,7 +850,10 @@ export class OpenAIService extends BaseProxyService {
             const candidates = Array.isArray(responsePayload.candidates)
               ? responsePayload.candidates
               : [];
-            for (const [candidateIndex, candidateValue] of candidates.entries()) {
+            for (const [
+              candidateIndex,
+              candidateValue,
+            ] of candidates.entries()) {
               const candidate = toUnknownRecord(candidateValue);
               const content = toUnknownRecord(candidate?.content);
               const parts = Array.isArray(content?.parts) ? content.parts : [];
@@ -826,15 +913,23 @@ export class OpenAIService extends BaseProxyService {
                     ? selectClientCommandTool(splitName.name, clientToolNames)
                     : splitName.name;
                   const rawArguments = toUnknownRecord(functionCall.args) ?? {};
-                  const adaptedCommandArguments = adaptCommandArguments(functionName, rawArguments);
+                  const adaptedCommandArguments = adaptCommandArguments(
+                    functionName,
+                    rawArguments,
+                  );
                   if (adaptedCommandArguments.fallbackApplied) {
-                    this.logger.debug('[OpenAI] command tool fallback_applied=true');
+                    this.logger.debug(
+                      '[OpenAI] command tool fallback_applied=true',
+                    );
                   }
                   const functionArguments = isCustomToolCall(functionName)
                     ? toCustomToolArguments(
                         functionName,
                         optimizeApplyPatch(
-                          extractCustomToolInput(functionName, adaptedCommandArguments.arguments),
+                          extractCustomToolInput(
+                            functionName,
+                            adaptedCommandArguments.arguments,
+                          ),
                         ).input,
                       )
                     : adaptedCommandArguments.arguments;
@@ -906,8 +1001,13 @@ export class OpenAIService extends BaseProxyService {
               const finishReason = isString(candidate?.finishReason)
                 ? candidate.finishReason
                 : undefined;
-              const isMalformedFunctionCall = isMalformedFunctionCallFinishReason(finishReason);
-              if (isMalformedFunctionCall && !responseContent && !hasEmittedContent) {
+              const isMalformedFunctionCall =
+                isMalformedFunctionCallFinishReason(finishReason);
+              if (
+                isMalformedFunctionCall &&
+                !responseContent &&
+                !hasEmittedContent
+              ) {
                 responseContent = MALFORMED_FUNCTION_CALL_RECOVERY_TEXT;
               }
 
@@ -947,7 +1047,9 @@ export class OpenAIService extends BaseProxyService {
                         ? 'stop'
                         : emittedToolCalls.size > 0
                           ? 'tool_calls'
-                          : mapGeminiFinishReasonToOpenAIFinishReason(finishReason),
+                          : mapGeminiFinishReasonToOpenAIFinishReason(
+                              finishReason,
+                            ),
                     },
                   ],
                   usage: lastUsage,
@@ -991,10 +1093,16 @@ export class OpenAIService extends BaseProxyService {
           !streamFailed &&
           sawFinishReason
         ) {
-          this.markUpstreamSuccess(successAccountId, signatureSourceModel ?? model);
+          this.markUpstreamSuccess(
+            successAccountId,
+            signatureSourceModel ?? model,
+          );
         }
         if (streamFailed || (!sawFinishReason && !hasEmittedOutput)) {
-          fail('upstream_interrupted', 'Upstream stream ended without output or a finish reason.');
+          fail(
+            'upstream_interrupted',
+            'Upstream stream ended without output or a finish reason.',
+          );
           return;
         }
         if (!sawFinishReason) {
@@ -1017,7 +1125,9 @@ export class OpenAIService extends BaseProxyService {
       upstreamStream.on('error', (err: unknown) => {
         idleTimer.clear();
         const cleanError = err instanceof Error ? err : new Error(String(err));
-        this.logger.error(`OpenAI-compatible stream error: ${cleanError.message}`);
+        this.logger.error(
+          `OpenAI-compatible stream error: ${cleanError.message}`,
+        );
         fail('upstream_stream_error', 'Upstream response stream failed.');
       });
 
@@ -1028,7 +1138,9 @@ export class OpenAIService extends BaseProxyService {
     });
   }
 
-  private createSyntheticOpenAIStream(response: OpenAIChatResponse): Observable<string> {
+  private createSyntheticOpenAIStream(
+    response: OpenAIChatResponse,
+  ): Observable<string> {
     return new Observable<string>((subscriber) => {
       const streamId = response.id || `chatcmpl-${uuidv4()}`;
       const created = response.created || Math.floor(Date.now() / 1000);
@@ -1037,15 +1149,23 @@ export class OpenAIService extends BaseProxyService {
       const finishReason = choice?.finish_reason ?? 'stop';
       const reasoningContent = choice?.message?.reasoning_content;
       const content =
-        choice?.message && isString(choice.message.content) ? choice.message.content : '';
+        choice?.message && isString(choice.message.content)
+          ? choice.message.content
+          : '';
       const chunkSize = 80;
 
       if (this.shouldEmitCloudCodeMeta()) {
-        subscriber.next(this.createCloudCodeMetaChunk(this.createCloudCodeTraceId()));
+        subscriber.next(
+          this.createCloudCodeMetaChunk(this.createCloudCodeTraceId()),
+        );
       }
 
       if (reasoningContent) {
-        for (let index = 0; index < reasoningContent.length; index += chunkSize) {
+        for (
+          let index = 0;
+          index < reasoningContent.length;
+          index += chunkSize
+        ) {
           const chunk = {
             id: streamId,
             object: 'chat.completion.chunk',
@@ -1057,7 +1177,10 @@ export class OpenAIService extends BaseProxyService {
                 delta: {
                   role: 'assistant',
                   content: null,
-                  reasoning_content: reasoningContent.slice(index, index + chunkSize),
+                  reasoning_content: reasoningContent.slice(
+                    index,
+                    index + chunkSize,
+                  ),
                 },
                 finish_reason: null,
               },
@@ -1133,13 +1256,18 @@ export class OpenAIService extends BaseProxyService {
       const choice = response.choices?.[0];
       const reasoningContent = choice?.message?.reasoning_content;
       const content =
-        choice?.message && isString(choice.message.content) ? choice.message.content : undefined;
+        choice?.message && isString(choice.message.content)
+          ? choice.message.content
+          : undefined;
 
       subscriber.next(mapper.createResponseCreatedEvent());
       subscriber.next(mapper.createResponseInProgressEvent());
       mapper.setUsage(toOpenAIResponsesUsage(response.usage));
       if (reasoningContent) {
-        for (const event of mapper.processPart({ text: reasoningContent, thought: true })) {
+        for (const event of mapper.processPart({
+          text: reasoningContent,
+          thought: true,
+        })) {
           subscriber.next(event);
         }
       }
@@ -1152,7 +1280,9 @@ export class OpenAIService extends BaseProxyService {
       for (const toolCall of choice?.message?.tool_calls ?? []) {
         const functionName =
           toolCall.function?.name ??
-          (toolCall.operation || toolCall.type === 'apply_patch_call' ? 'apply_patch' : null);
+          (toolCall.operation || toolCall.type === 'apply_patch_call'
+            ? 'apply_patch'
+            : null);
         if (!functionName) {
           continue;
         }
@@ -1160,7 +1290,9 @@ export class OpenAIService extends BaseProxyService {
           functionCall: {
             args:
               toolCall.operation ??
-              parseOpenAIFunctionArguments(toolCall.function?.arguments ?? '{}'),
+              parseOpenAIFunctionArguments(
+                toolCall.function?.arguments ?? '{}',
+              ),
             id: toolCall.call_id || toolCall.id,
             name: functionName,
           },
@@ -1186,7 +1318,12 @@ export class OpenAIService extends BaseProxyService {
     signatureSessionKey?: string,
   ): ClaudeRequest {
     return convertOpenAIToClaude(request, signatureSessionKey, {
-      allowLocalVideoPaths: Boolean(getServerConfig()?.experimental?.allow_local_video_paths),
+      // Reading local video paths from the filesystem is only ever allowed for
+      // loopback clients: once enabled it can read any file the process user can,
+      // so a remote authenticated client must not reach it.
+      allowLocalVideoPaths:
+        Boolean(getServerConfig()?.experimental?.allow_local_video_paths) &&
+        getCurrentRequestLoopback(),
     });
   }
 
@@ -1199,11 +1336,18 @@ export class OpenAIService extends BaseProxyService {
       if (contentBlock.type !== 'tool_use') {
         continue;
       }
-      if (adaptCommandArguments(contentBlock.name, contentBlock.input).fallbackApplied) {
+      if (
+        adaptCommandArguments(contentBlock.name, contentBlock.input)
+          .fallbackApplied
+      ) {
         this.logger?.debug('[OpenAI] command tool fallback_applied=true');
       }
     }
-    return convertClaudeToOpenAIResponse(claudeResponse, model, clientToolNames);
+    return convertClaudeToOpenAIResponse(
+      claudeResponse,
+      model,
+      clientToolNames,
+    );
   }
 
   private convertOpenAIToolsToAnthropicTools(
@@ -1212,7 +1356,9 @@ export class OpenAIService extends BaseProxyService {
     return convertOpenAIToolsToAnthropicTools(tools);
   }
 
-  private extractOpenAISessionKey(request: OpenAIChatRequest): string | undefined {
+  private extractOpenAISessionKey(
+    request: OpenAIChatRequest,
+  ): string | undefined {
     const extra = request.extra;
     const sessionCandidate =
       extra?.session_id ?? extra?.sessionId ?? extra?.user_id ?? extra?.userId;

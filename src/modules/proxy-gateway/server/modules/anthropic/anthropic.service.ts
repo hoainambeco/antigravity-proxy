@@ -793,7 +793,7 @@ export class AnthropicService extends BaseProxyService {
       thinking: request.thinking,
       output_config: request.output_config,
       metadata: {
-        ...(request.metadata ?? {}),
+        ...request.metadata,
         signature_session_key: signatureSessionKey,
       },
     };

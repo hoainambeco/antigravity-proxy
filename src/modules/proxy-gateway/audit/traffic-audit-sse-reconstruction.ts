@@ -118,7 +118,7 @@ function reconstructAnthropicMessage(events: unknown[]): JsonObject {
     }
     const index = typeof event.index === 'number' ? event.index : null;
     if (event.type === 'content_block_start' && index !== null) {
-      blocks.set(index, { ...(auditJsonObject(event.content_block) ?? {}) });
+      blocks.set(index, { ...auditJsonObject(event.content_block) });
     }
     if (event.type === 'content_block_delta' && index !== null) {
       const block = blocks.get(index) ?? {};
@@ -147,7 +147,7 @@ function reconstructAnthropicMessage(events: unknown[]): JsonObject {
       Object.assign(message, auditJsonObject(event.delta) ?? {});
       const usage = auditJsonObject(event.usage);
       if (usage) {
-        message.usage = { ...(auditJsonObject(message.usage) ?? {}), ...usage };
+        message.usage = { ...auditJsonObject(message.usage), ...usage };
       }
     }
   }

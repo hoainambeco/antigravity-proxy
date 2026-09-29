@@ -1,5 +1,13 @@
-import { Body, Controller, Inject, Post, Res, UseGuards } from '@nestjs/common';
-import type { FastifyReply } from 'fastify';
+import {
+  Body,
+  Controller,
+  Inject,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 
 import { ProxyGuard } from '../../guards/proxy.guard';
 import { V1InternalPassthroughService } from './v1internal-passthrough.service';
@@ -13,30 +21,50 @@ export class V1InternalPassthroughController {
   ) {}
 
   @Post('countTokens')
-  async countTokens(@Body() body: unknown, @Res() response: FastifyReply): Promise<void> {
-    await this.forward('countTokens', body, response);
+  async countTokens(
+    @Body() body: unknown,
+    @Res() response: FastifyReply,
+    @Req() request: FastifyRequest,
+  ): Promise<void> {
+    await this.forward('countTokens', body, response, request);
   }
 
   @Post('embedContent')
-  async embedContent(@Body() body: unknown, @Res() response: FastifyReply): Promise<void> {
-    await this.forward('embedContent', body, response);
+  async embedContent(
+    @Body() body: unknown,
+    @Res() response: FastifyReply,
+    @Req() request: FastifyRequest,
+  ): Promise<void> {
+    await this.forward('embedContent', body, response, request);
   }
 
   @Post('generateChat')
-  async generateChat(@Body() body: unknown, @Res() response: FastifyReply): Promise<void> {
-    await this.forward('generateChat', body, response);
+  async generateChat(
+    @Body() body: unknown,
+    @Res() response: FastifyReply,
+    @Req() request: FastifyRequest,
+  ): Promise<void> {
+    await this.forward('generateChat', body, response, request);
   }
 
-  private async forward(verb: string, body: unknown, response: FastifyReply): Promise<void> {
-    const upstream = await this.passthroughService.forward(verb, body);
+  private async forward(
+    verb: string,
+    body: unknown,
+    response: FastifyReply,
+    request: FastifyRequest,
+  ): Promise<void> {
+    const apiKeyInfo = (request as FastifyRequest & {
+      apiKeyInfo?: { allowedAccountIds?: string[] | null };
+    }).apiKeyInfo;
+    const upstream = await this.passthroughService.forward(
+      verb,
+      body,
+      apiKeyInfo?.allowedAccountIds ?? null,
+    );
     for (const [name, value] of Object.entries(upstream.headers)) {
       response.header(name, value);
     }
 
-    response
-      .header('x-antigravity-v1internal-account-id', upstream.accountId)
-      .header('x-antigravity-v1internal-account-email', upstream.accountEmail)
-      .status(upstream.status)
-      .send(upstream.body);
+    response.status(upstream.status).send(upstream.body);
   }
 }

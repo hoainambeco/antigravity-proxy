@@ -29,6 +29,10 @@ COPY --from=backend-builder /app/node_modules ./node_modules
 COPY --from=backend-builder /app/dist ./dist
 COPY --from=web-builder /app/web/dist ./web/dist
 
+# Run as the unprivileged `node` user. /app/data is the declared volume; a fresh
+# named volume inherits this directory's ownership, so the node user can write it.
+RUN mkdir -p /app/data && chown -R node:node /app
+
 EXPOSE 8045
 VOLUME ["/app/data"]
 
@@ -39,5 +43,7 @@ ENV PORT=8045
 # It therefore overrides the loopback-in-Open-Mode default, so the safety boundary
 # moves to the host: publish with -p 127.0.0.1:8045:8045 until an API key is set.
 ENV HOST=0.0.0.0
+
+USER node
 
 CMD ["node", "dist/main"]

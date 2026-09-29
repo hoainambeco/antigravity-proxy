@@ -22,7 +22,38 @@ import {
   CreateApiKeyDto,
   UpdateApiKeyDto,
 } from "./dto/api-key.dto";
-import { ApiKey } from "./entities/api-key.entity";
+import { ApiKey, ApiKeyRole } from "./entities/api-key.entity";
+
+const VALID_ROLES: ReadonlySet<ApiKeyRole> = new Set(["client", "admin"]);
+
+function normalizeAllowedAccountIds(
+  value: unknown,
+): string[] | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  if (!Array.isArray(value)) {
+    throw new BadRequestException("allowedAccountIds must be an array of strings");
+  }
+  const ids = value.map((s) => String(s).trim()).filter(Boolean);
+  if (ids.length === 0) {
+    return null;
+  }
+  return ids;
+}
+
+function normalizeRole(value: unknown): ApiKeyRole | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!VALID_ROLES.has(value as ApiKeyRole)) {
+    throw new BadRequestException(`role must be one of: ${[...VALID_ROLES].join(", ")}`);
+  }
+  return value as ApiKeyRole;
+}
 
 /** A newly created key, paired with the one and only view of its plaintext. */
 export interface CreatedApiKey {
@@ -257,17 +288,16 @@ export class ApiKeyService implements OnModuleInit, OnModuleDestroy {
       keyValue = generateApiKey();
     }
 
-    const allowed = Array.isArray(dto.allowedAccountIds)
-      ? dto.allowedAccountIds.map((s) => String(s).trim()).filter(Boolean)
-      : null;
+    const allowed = normalizeAllowedAccountIds(dto.allowedAccountIds);
+    const role = normalizeRole(dto.role);
 
     const entity = this.apiKeyRepository.create({
       name: dto.name.trim(),
       keyHash: hashApiKey(keyValue),
       keyPreview: previewApiKey(keyValue),
-      role: dto.role || "client",
+      role: role ?? "client",
       isActive: true,
-      allowedAccountIds: allowed && allowed.length > 0 ? allowed : null,
+      allowedAccountIds: allowed ?? null,
       expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
       lastUsedAt: null,
     });
@@ -302,16 +332,13 @@ export class ApiKeyService implements OnModuleInit, OnModuleDestroy {
       key.name = dto.name.trim();
     }
     if (dto.role !== undefined) {
-      key.role = dto.role;
+      key.role = normalizeRole(dto.role)!;
     }
     if (dto.isActive !== undefined) {
       key.isActive = dto.isActive;
     }
     if (dto.allowedAccountIds !== undefined) {
-      const allowed = Array.isArray(dto.allowedAccountIds)
-        ? dto.allowedAccountIds.map((s) => String(s).trim()).filter(Boolean)
-        : null;
-      key.allowedAccountIds = allowed && allowed.length > 0 ? allowed : null;
+      key.allowedAccountIds = normalizeAllowedAccountIds(dto.allowedAccountIds) ?? null;
     }
     if (dto.expiresAt !== undefined) {
       key.expiresAt = dto.expiresAt ? new Date(dto.expiresAt) : null;

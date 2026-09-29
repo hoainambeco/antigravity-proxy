@@ -1,15 +1,25 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import http from 'node:http';
-import { GoogleAPIService } from './GoogleAPIService';
-import { jsonAccountStoreInstance } from '../../proxy-gateway/server/modules/account-lease/adapters/json-account.store';
 import { AccountLeaseService } from '../../proxy-gateway/server/modules/account-lease/account-lease.service';
+import { jsonAccountStoreInstance } from '../../proxy-gateway/server/modules/account-lease/adapters/json-account.store';
 import type { CloudAccount } from '../types';
+import { GoogleAPIService } from './GoogleAPIService';
+import { consumeGoogleOAuthState } from './google-oauth-state';
 
 const OAUTH_HOST = '127.0.0.1';
 const ALLOWED_PORTS = [8888, 8889, 8890, 8891, 8892];
 const DEFAULT_REDIRECT_URI = 'http://127.0.0.1:8888/oauth-callback';
 
-function buildCallbackHtml(title: string, message: string, ok: boolean): string {
+function buildCallbackHtml(
+  title: string,
+  message: string,
+  ok: boolean,
+): string {
   const color = ok ? '#10b981' : '#ef4444';
   return `<!DOCTYPE html>
 <html lang="vi">
@@ -47,7 +57,9 @@ export class OAuthCallbackServer implements OnModuleInit, OnModuleDestroy {
     try {
       await this.start();
     } catch (err) {
-      this.logger.warn(`OAuth callback listener could not start: ${(err as Error).message}`);
+      this.logger.warn(
+        `OAuth callback listener could not start: ${(err as Error).message}`,
+      );
     }
   }
 
@@ -56,7 +68,9 @@ export class OAuthCallbackServer implements OnModuleInit, OnModuleDestroy {
   }
 
   getRedirectUri(): string {
-    return this.boundPort ? `http://${OAUTH_HOST}:${this.boundPort}/oauth-callback` : DEFAULT_REDIRECT_URI;
+    return this.boundPort
+      ? `http://${OAUTH_HOST}:${this.boundPort}/oauth-callback`
+      : DEFAULT_REDIRECT_URI;
   }
 
   renderSuccess(email: string, accountId: string): string {
@@ -83,13 +97,17 @@ export class OAuthCallbackServer implements OnModuleInit, OnModuleDestroy {
         });
         this.server = server;
         this.boundPort = port;
-        this.logger.log(`OAuth callback listener started at http://${OAUTH_HOST}:${port}/oauth-callback`);
+        this.logger.log(
+          `OAuth callback listener started at http://${OAUTH_HOST}:${port}/oauth-callback`,
+        );
         return;
       } catch {
         // Port in use, try next
       }
     }
-    throw new Error(`Không thể mở cổng callback OAuth trên các cổng: ${ALLOWED_PORTS.join(', ')}`);
+    throw new Error(
+      `Không thể mở cổng callback OAuth trên các cổng: ${ALLOWED_PORTS.join(', ')}`,
+    );
   }
 
   async close(): Promise<void> {
@@ -100,7 +118,10 @@ export class OAuthCallbackServer implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async saveOAuthAccount(code: string, redirectUri: string): Promise<CloudAccount> {
+  async saveOAuthAccount(
+    code: string,
+    redirectUri: string,
+  ): Promise<CloudAccount> {
     const tokens = await GoogleAPIService.exchangeCode(
       code,
       undefined,
@@ -120,7 +141,9 @@ export class OAuthCallbackServer implements OnModuleInit, OnModuleDestroy {
 
     let projectId = '';
     try {
-      const projectContext = await GoogleAPIService.fetchProjectContext(tokens.access_token);
+      const projectContext = await GoogleAPIService.fetchProjectContext(
+        tokens.access_token,
+      );
       projectId = projectContext.projectId || '';
     } catch {
       this.logger.warn('Could not auto-fetch project context');
@@ -155,7 +178,10 @@ export class OAuthCallbackServer implements OnModuleInit, OnModuleDestroy {
       const quota = await GoogleAPIService.fetchQuota(tokens.access_token);
       newAccount.quota = quota;
     } catch (quotaErr) {
-      this.logger.warn('Initial quota fetch failed, will retry on background interval', quotaErr);
+      this.logger.warn(
+        'Initial quota fetch failed, will retry on background interval',
+        quotaErr,
+      );
     }
 
     await jsonAccountStoreInstance.upsertAccount(newAccount);
@@ -164,8 +190,14 @@ export class OAuthCallbackServer implements OnModuleInit, OnModuleDestroy {
     return newAccount;
   }
 
-  private handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const url = new URL(req.url || '/', `http://${OAUTH_HOST}:${this.boundPort ?? 8888}`);
+  private handleRequest(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+  ): void {
+    const url = new URL(
+      req.url || '/',
+      `http://${OAUTH_HOST}:${this.boundPort ?? 8888}`,
+    );
 
     if (url.pathname !== '/oauth-callback') {
       res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -175,6 +207,7 @@ export class OAuthCallbackServer implements OnModuleInit, OnModuleDestroy {
 
     const code = url.searchParams.get('code') || undefined;
     const error = url.searchParams.get('error') || undefined;
+    const state = url.searchParams.get('state') || undefined;
 
     if (error || !code) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -182,6 +215,21 @@ export class OAuthCallbackServer implements OnModuleInit, OnModuleDestroy {
         buildCallbackHtml(
           'Đăng nhập thất bại',
           `Không nhận được mã xác thực: ${error || 'Thiếu mã code'}`,
+          false,
+        ),
+      );
+      return;
+    }
+
+    // Only exchange codes from a consent flow this process started. A state that is
+    // missing, unknown, reused, or expired is rejected so a local process cannot
+    // inject an authorization code of its own.
+    if (!consumeGoogleOAuthState(state)) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(
+        buildCallbackHtml(
+          'Đăng nhập thất bại',
+          'Trạng thái OAuth không hợp lệ hoặc đã hết hạn. Vui lòng thử lại.',
           false,
         ),
       );

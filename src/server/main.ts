@@ -1,34 +1,35 @@
-import { registerTrafficAuditHttpHooks } from "@/modules/proxy-gateway/audit/traffic-audit-context";
-import { trafficAuditService } from "@/modules/proxy-gateway/audit/traffic-audit.service";
-import { MAX_IMAGE_GENERATION_BODY_BYTES } from "@/modules/proxy-gateway/server/modules/openai/media/image-input-validation";
-import { thoughtStoreService } from "@/modules/proxy-gateway/thought-store/thought-store.service";
-import fastifyMultipart from "@fastify/multipart";
-import fastifyStatic from "@fastify/static";
-import path from "node:path";
-import fs from "node:fs";
-import { NestFactory } from "@nestjs/core";
+import { registerTrafficAuditHttpHooks } from '@/modules/proxy-gateway/audit/traffic-audit-context';
+import { trafficAuditService } from '@/modules/proxy-gateway/audit/traffic-audit.service';
+import { MAX_IMAGE_GENERATION_BODY_BYTES } from '@/modules/proxy-gateway/server/modules/openai/media/image-input-validation';
+import { thoughtStoreService } from '@/modules/proxy-gateway/thought-store/thought-store.service';
+import fastifyMultipart from '@fastify/multipart';
+import fastifyStatic from '@fastify/static';
+import { NestFactory } from '@nestjs/core';
 import {
   FastifyAdapter,
   NestFastifyApplication,
-} from "@nestjs/platform-fastify";
-import "reflect-metadata";
-import { isObservable } from "rxjs";
-import { ApiKeyService } from "../modules/api-key/api-key.service";
+} from '@nestjs/platform-fastify';
+import fs from 'node:fs';
+import path from 'node:path';
+import 'reflect-metadata';
+import { isObservable } from 'rxjs';
+import { hashApiKey, hashesEqual } from '../modules/api-key/api-key-hash';
+import { ApiKeyService } from '../modules/api-key/api-key.service';
 import {
   extractApiKeyToken,
   hasConfiguredApiKey,
-} from "../modules/proxy-gateway/server/guards/api-key-auth.util";
-import { AccountLeaseService } from "../modules/proxy-gateway/server/modules/account-lease/account-lease.service";
-import { DEFAULT_MAX_FILE_BYTES } from "../modules/proxy-gateway/server/modules/files/file-store.types";
-import { OpenAIOperations } from "../modules/proxy-gateway/server/modules/openai/openai-operations.service";
-import { parseResponsesRequestBody } from "../modules/proxy-gateway/server/modules/openai/responses/openai-responses-request";
-import { attachOpenAIResponsesWebSocketServer } from "../modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.server";
-import { ProxyService } from "../modules/proxy-gateway/server/proxy.service";
-import { logger } from "../shared/logging/logger";
-import { AppModule } from "./app.module";
+} from '../modules/proxy-gateway/server/guards/api-key-auth.util';
+import { AccountLeaseService } from '../modules/proxy-gateway/server/modules/account-lease/account-lease.service';
+import { DEFAULT_MAX_FILE_BYTES } from '../modules/proxy-gateway/server/modules/files/file-store.types';
+import { OpenAIOperations } from '../modules/proxy-gateway/server/modules/openai/openai-operations.service';
+import { parseResponsesRequestBody } from '../modules/proxy-gateway/server/modules/openai/responses/openai-responses-request';
+import { attachOpenAIResponsesWebSocketServer } from '../modules/proxy-gateway/server/modules/openai/responses/openai-responses-websocket.server';
+import { ProxyService } from '../modules/proxy-gateway/server/proxy.service';
+import { logger } from '../shared/logging/logger';
+import { AppModule } from './app.module';
 
-import { ProxyConfig } from "@/modules/config/types";
-import { getServerConfig, setServerConfig } from "./server-config";
+import { ProxyConfig } from '@/modules/config/types';
+import { getServerConfig, setServerConfig } from './server-config';
 
 let app: NestFastifyApplication | null = null;
 let currentPort: number = 0;
@@ -42,7 +43,7 @@ export type NestServerStartResult =
     }
   | {
       success: false;
-      reason: "address-in-use" | "unknown";
+      reason: 'address-in-use' | 'unknown';
       port: number;
       message: string;
     };
@@ -50,7 +51,7 @@ export type NestServerStartResult =
 interface RawMediaBodyParserHost {
   addContentTypeParser: (
     matcher: RegExp,
-    options: { bodyLimit: number; parseAs: "buffer" },
+    options: { bodyLimit: number; parseAs: 'buffer' },
     handler: (
       request: unknown,
       body: Buffer,
@@ -61,7 +62,7 @@ interface RawMediaBodyParserHost {
 
 interface ImageGenerationRouteLimitHost {
   addHook: (
-    name: "onRoute",
+    name: 'onRoute',
     handler: (options: {
       bodyLimit?: number;
       method: string | string[];
@@ -73,11 +74,11 @@ interface ImageGenerationRouteLimitHost {
 export function registerImageGenerationBodyLimit(
   instance: ImageGenerationRouteLimitHost,
 ): void {
-  instance.addHook("onRoute", (options) => {
+  instance.addHook('onRoute', (options) => {
     const methods = Array.isArray(options.method)
       ? options.method
       : [options.method];
-    if (methods.includes("POST") && options.url === "/v1/images/generations") {
+    if (methods.includes('POST') && options.url === '/v1/images/generations') {
       options.bodyLimit = MAX_IMAGE_GENERATION_BODY_BYTES;
     }
   });
@@ -95,7 +96,7 @@ export function registerImageGenerationBodyLimit(
 function registerRawMediaBodyParser(instance: RawMediaBodyParserHost): void {
   instance.addContentTypeParser(
     /^(?:application|audio|font|image|model|text|video)\//u,
-    { bodyLimit: DEFAULT_MAX_FILE_BYTES + 1024 * 1024, parseAs: "buffer" },
+    { bodyLimit: DEFAULT_MAX_FILE_BYTES + 1024 * 1024, parseAs: 'buffer' },
     (_request, body, done) => {
       done(null, body);
     },
@@ -104,25 +105,28 @@ function registerRawMediaBodyParser(instance: RawMediaBodyParserHost): void {
 
 function isAddressInUseError(error: unknown): boolean {
   if (
-    (typeof error !== "object" && typeof error !== "function") ||
+    (typeof error !== 'object' && typeof error !== 'function') ||
     error === null
   ) {
     return false;
   }
 
-  return Reflect.get(error, "code") === "EADDRINUSE";
+  return Reflect.get(error, 'code') === 'EADDRINUSE';
 }
 
 // A bind address the machine cannot be reached on from the network. Anything else --
 // 0.0.0.0, ::, a LAN address -- exposes the port, which matters while the proxy is
 // unauthenticated (see the Open Mode warning in bootstrapNestServer).
 function isLoopbackHost(host: string): boolean {
-  const normalized = host.trim().toLowerCase().replace(/^\[|\]$/g, "");
+  const normalized = host
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, '');
   return (
-    normalized === "localhost" ||
-    normalized === "::1" ||
-    normalized === "::ffff:127.0.0.1" ||
-    normalized.startsWith("127.")
+    normalized === 'localhost' ||
+    normalized === '::1' ||
+    normalized === '::ffff:127.0.0.1' ||
+    normalized.startsWith('127.')
   );
 }
 
@@ -137,7 +141,7 @@ async function cleanupFailedServerStart() {
     await app.close();
   } catch (closeError) {
     logger.warn(
-      "Failed to clean up NestJS server after startup failure",
+      'Failed to clean up NestJS server after startup failure',
       closeError,
     );
   } finally {
@@ -151,7 +155,7 @@ export async function bootstrapNestServer(
 ): Promise<NestServerStartResult> {
   const port = config.port || 8045;
   if (app) {
-    logger.info("NestJS server already running.");
+    logger.info('NestJS server already running.');
     return {
       success: true,
       port: currentPort,
@@ -169,9 +173,32 @@ export async function bootstrapNestServer(
       AppModule,
       fastifyAdapter,
       {
-        logger: ["error", "warn", "log"],
+        logger: ['error', 'warn', 'log'],
       },
     );
+
+    // Security headers on every response (dashboard HTML, JSON, SSE). CSP lets the
+    // dashboard run from itself with no inline scripts; the proxy APIs are consumed by
+    // CLI/agent clients that ignore browser policies.
+    fastifyAdapter
+      .getInstance()
+      .addHook('onSend', async (_request, reply, payload) => {
+        reply
+          .header('X-Content-Type-Options', 'nosniff')
+          .header('X-Frame-Options', 'DENY')
+          .header('Referrer-Policy', 'no-referrer')
+          .header(
+            'Permissions-Policy',
+            'camera=(), microphone=(), geolocation=()',
+          )
+          .header(
+            'Content-Security-Policy',
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+              "img-src 'self' data: blob:; connect-src 'self' ws: wss:; font-src 'self' data:; " +
+              "frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+          );
+        return payload;
+      });
 
     await app.register(fastifyMultipart as any, {
       limits: {
@@ -190,31 +217,42 @@ export async function bootstrapNestServer(
       hasConfiguredApiKey(config.api_key) || hasDynamicKeys;
     app.enableCors();
 
-    const webDistPath = path.resolve(process.cwd(), "web/dist");
+    const webDistPath = path.resolve(process.cwd(), 'web/dist');
     if (fs.existsSync(webDistPath)) {
       await app.register(fastifyStatic as any, {
         root: webDistPath,
-        prefix: "/",
+        prefix: '/',
         decorateReply: true,
       });
       logger.info(`Web UI static dashboard mounted from ${webDistPath}`);
     }
 
-    const defaultHost = apiKeyConfigured ? "0.0.0.0" : "127.0.0.1";
+    const defaultHost = apiKeyConfigured ? '0.0.0.0' : '127.0.0.1';
     const listenHost = process.env.HOST || defaultHost;
 
     // Open Mode (no master key, no key in the database) accepts every request
     // unauthenticated. The default host keeps that state on loopback, but an explicit
-    // HOST overrides it, so an operator can publish an unauthenticated proxy over their
-    // own Google accounts without noticing. Say so loudly instead.
+    // HOST overrides it, so an operator could publish an unauthenticated proxy over their
+    // own Google accounts without noticing. Refuse to start unless the operator explicitly
+    // acknowledges the risk with ALLOW_OPEN_MODE_NON_LOOPBACK=1.
     if (!apiKeyConfigured && !isLoopbackHost(listenHost)) {
+      if (process.env.ALLOW_OPEN_MODE_NON_LOOPBACK !== '1') {
+        throw new Error(
+          'Refusing to start: the proxy has no PROXY_API_KEY and no API key in the ' +
+            `database (Open Mode), yet HOST=${listenHost} binds beyond loopback. Every ` +
+            'request would be accepted with no authentication and would spend your linked ' +
+            "accounts' quota. Set PROXY_API_KEY, create a key with `npm run api-key`, or " +
+            'unset HOST. If you really intend to run an unauthenticated proxy on a public ' +
+            'interface, set ALLOW_OPEN_MODE_NON_LOOPBACK=1.',
+        );
+      }
       logger.warn(
-        "=".repeat(70) +
+        '='.repeat(70) +
           `\nOPEN MODE ON A PUBLIC INTERFACE: no PROXY_API_KEY and no API key in the` +
           `\ndatabase, yet HOST=${listenHost} binds beyond loopback. Every request to this` +
           `\nport is accepted with no authentication and spends your linked Google accounts'` +
-          `\nquota. Set PROXY_API_KEY, or create a key with \`npm run api-key\`, or unset HOST.\n` +
-          "=".repeat(70),
+          `\nquota. ALLOW_OPEN_MODE_NON_LOOPBACK=1 is set, so startup proceeds.\n` +
+          '='.repeat(70),
       );
     } else if (!apiKeyConfigured) {
       logger.warn(
@@ -236,26 +274,31 @@ export async function bootstrapNestServer(
             return apiKeyService.validateKeySync(clientToken).valid;
           }
           const configuredApiKey = getConfiguredApiKey();
+          const clientToken = extractApiKeyToken(request.headers);
           return (
             !hasConfiguredApiKey(configuredApiKey) ||
-            extractApiKeyToken(request.headers) === configuredApiKey
+            (clientToken !== null &&
+              hashesEqual(
+                hashApiKey(clientToken),
+                hashApiKey(configuredApiKey),
+              ))
           );
         },
         streamRequest: async (request) => {
           const body = parseResponsesRequestBody(request);
           if (!body) {
-            throw new Error("Invalid Responses WebSocket request");
+            throw new Error('Invalid Responses WebSocket request');
           }
           const prepared = openAIOperations.prepareResponsesRequest(body);
           if (!prepared) {
             throw new Error(
-              `Unknown or expired previous_response_id: ${String(request.previous_response_id ?? "")}`,
+              `Unknown or expired previous_response_id: ${String(request.previous_response_id ?? '')}`,
             );
           }
 
           const result = await proxyService.handleChatCompletions(
             prepared.request,
-            "responses",
+            'responses',
             undefined,
             {
               requestSessionId: prepared.requestSessionId,
@@ -265,7 +308,7 @@ export async function bootstrapNestServer(
           );
           if (!isObservable(result)) {
             throw new Error(
-              "Responses WebSocket request did not produce a stream",
+              'Responses WebSocket request did not produce a stream',
             );
           }
           return result;
@@ -287,21 +330,21 @@ export async function bootstrapNestServer(
       logger.warn(`NestJS Proxy Server could not start: ${message}`, error);
       return {
         success: false,
-        reason: "address-in-use",
+        reason: 'address-in-use',
         port,
         message,
       };
     }
 
-    logger.error("Failed to start NestJS server", error);
+    logger.error('Failed to start NestJS server', error);
     return {
       success: false,
-      reason: "unknown",
+      reason: 'unknown',
       port,
       message:
         error instanceof Error
           ? error.message
-          : "Failed to start NestJS server",
+          : 'Failed to start NestJS server',
     };
   }
 }
@@ -318,10 +361,10 @@ export async function stopNestServer(): Promise<boolean> {
       ]);
       app = null;
       currentPort = 0;
-      logger.info("NestJS server stopped.");
+      logger.info('NestJS server stopped.');
       return true;
     } catch (e) {
-      logger.error("Failed to stop NestJS server", e);
+      logger.error('Failed to stop NestJS server', e);
       return false;
     }
   }
@@ -352,7 +395,7 @@ export function evictNestServerAccountLeaseAccount(accountId: string): boolean {
 
 export function updateNestServerAccountLeaseOAuthHealth(
   accountId: string,
-  oauthHealth: Parameters<AccountLeaseService["updateAccountOAuthHealth"]>[1],
+  oauthHealth: Parameters<AccountLeaseService['updateAccountOAuthHealth']>[1],
 ): boolean {
   if (!app) {
     return false;
@@ -388,7 +431,7 @@ export async function getNestServerStatus(): Promise<{
   return {
     running,
     port: currentPort,
-    base_url: running ? `http://localhost:${currentPort}` : "",
+    base_url: running ? `http://localhost:${currentPort}` : '',
     active_accounts: activeAccounts,
   };
 }

@@ -1,26 +1,31 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Sidebar, type TabType } from './components/Sidebar';
+import { useCallback, useEffect, useState } from 'react';
+import { api } from './api/client';
+import { clearAdminKey, getAdminKey, setAdminKey } from './api/keyStorage';
 import { Header } from './components/Header';
-import { DashboardView } from './views/DashboardView';
+import { Sidebar, type TabType } from './components/Sidebar';
+import { useToast } from './components/Toast';
+import { useTranslation } from './i18n';
+import type {
+  Account,
+  ApiKeyItem,
+  AuditRecord,
+  ModelEntry,
+  SystemStatus,
+} from './types';
 import { AccountsView } from './views/AccountsView';
-import { RoutingView } from './views/RoutingView';
-import { ModelsView } from './views/ModelsView';
 import { ApiKeysView } from './views/ApiKeysView';
 import { AuditLogsView } from './views/AuditLogsView';
+import { DashboardView } from './views/DashboardView';
 import { LoginView } from './views/LoginView';
-import { api } from './api/client';
-import { useTranslation } from './i18n';
-import { useToast } from './components/Toast';
-import type { Account, ApiKeyItem, AuditRecord, ModelEntry, SystemStatus } from './types';
-
-const ADMIN_KEY_STORAGE = 'antigravity_admin_key';
+import { ModelsView } from './views/ModelsView';
+import { RoutingView } from './views/RoutingView';
 
 export function App() {
   const { t } = useTranslation();
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
-  const [adminKey, setAdminKey] = useState<string | null>(
-    () => localStorage.getItem(ADMIN_KEY_STORAGE),
+  const [adminKey, setAdminKeyState] = useState<string | null>(() =>
+    getAdminKey(),
   );
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -31,19 +36,26 @@ export function App() {
   const [loading, setLoading] = useState(true);
 
   const handleAuthed = (key: string) => {
-    localStorage.setItem(ADMIN_KEY_STORAGE, key);
     setAdminKey(key);
+    setAdminKeyState(key);
+  };
+
+  const handleLogout = () => {
+    clearAdminKey();
+    setAdminKeyState(null);
+    setActiveTab('dashboard');
   };
 
   const loadData = useCallback(async () => {
     try {
-      const [statusRes, accountsRes, modelsRes, apiKeysRes, auditRes] = await Promise.allSettled([
-        api.getSystemStatus(),
-        api.getAccounts(),
-        api.getModels(),
-        api.getApiKeys(),
-        api.getAuditRequests(),
-      ]);
+      const [statusRes, accountsRes, modelsRes, apiKeysRes, auditRes] =
+        await Promise.allSettled([
+          api.getSystemStatus(),
+          api.getAccounts(),
+          api.getModels(),
+          api.getApiKeys(),
+          api.getAuditRequests(),
+        ]);
 
       if (statusRes.status === 'fulfilled') setStatus(statusRes.value);
       if (accountsRes.status === 'fulfilled') setAccounts(accountsRes.value);
@@ -107,7 +119,11 @@ export function App() {
 
   return adminKey ? (
     <div className="flex min-h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-emerald-500/30 selection:text-emerald-300">
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} statusPort={status?.port ?? 8044} />
+      <Sidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        statusPort={status?.port ?? 8044}
+      />
 
       <div className="flex-1 flex flex-col min-w-0">
         <Header
@@ -115,6 +131,7 @@ export function App() {
           subtitle={titles[activeTab].subtitle}
           onRefresh={handleSyncAll}
           isRefreshing={isSyncing}
+          onLogout={handleLogout}
         />
 
         <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto overflow-y-auto">
@@ -134,14 +151,26 @@ export function App() {
                   isSyncing={isSyncing}
                 />
               )}
-              {activeTab === 'accounts' && <AccountsView accounts={accounts} onReload={loadData} />}
+              {activeTab === 'accounts' && (
+                <AccountsView accounts={accounts} onReload={loadData} />
+              )}
               {activeTab === 'routing' && <RoutingView />}
-              {activeTab === 'models' && <ModelsView models={models} proxyPort={status?.port} />}
+              {activeTab === 'models' && (
+                <ModelsView models={models} proxyPort={status?.port} />
+              )}
               {activeTab === 'api-keys' && (
-                <ApiKeysView apiKeys={apiKeys} accounts={accounts} onReload={loadData} />
+                <ApiKeysView
+                  apiKeys={apiKeys}
+                  accounts={accounts}
+                  onReload={loadData}
+                />
               )}
               {activeTab === 'audit' && (
-                <AuditLogsView logs={auditLogs} onReload={loadData} isLoading={isSyncing} />
+                <AuditLogsView
+                  logs={auditLogs}
+                  onReload={loadData}
+                  isLoading={isSyncing}
+                />
               )}
             </>
           )}

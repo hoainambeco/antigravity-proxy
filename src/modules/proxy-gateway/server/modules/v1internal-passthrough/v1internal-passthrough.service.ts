@@ -1,8 +1,12 @@
-import { Inject, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 
+import { setCurrentAuditAccountId } from '@/modules/proxy-gateway/audit/traffic-audit-context';
 import { AccountLeaseService } from '../account-lease/account-lease.service';
 import { GeminiClient } from '../gemini/gemini-client.service';
-import { setCurrentAuditAccountId } from '@/modules/proxy-gateway/audit/traffic-audit-context';
 
 /**
  * Response headers worth handing back. A diagnostic exists to be compared against the vendor's
@@ -18,8 +22,6 @@ const FORWARDED_HEADER_NAMES = new Set([
 ]);
 
 export interface V1InternalPassthroughResult {
-  accountEmail: string;
-  accountId: string;
   body: string;
   headers: Record<string, string>;
   status: number;
@@ -28,12 +30,19 @@ export interface V1InternalPassthroughResult {
 @Injectable()
 export class V1InternalPassthroughService {
   constructor(
-    @Inject(AccountLeaseService) private readonly accountLeaseService: AccountLeaseService,
+    @Inject(AccountLeaseService)
+    private readonly accountLeaseService: AccountLeaseService,
     @Inject(GeminiClient) private readonly geminiClient: GeminiClient,
   ) {}
 
-  async forward(verb: string, body: unknown): Promise<V1InternalPassthroughResult> {
-    const account = await this.accountLeaseService.getNextToken();
+  async forward(
+    verb: string,
+    body: unknown,
+    allowedAccountIds?: string[] | null,
+  ): Promise<V1InternalPassthroughResult> {
+    const account = await this.accountLeaseService.getNextToken({
+      allowedAccountIds: allowedAccountIds ?? undefined,
+    });
     if (!account) {
       throw new ServiceUnavailableException(
         'No eligible account is available for v1internal probing',
@@ -50,8 +59,6 @@ export class V1InternalPassthroughService {
     );
 
     return {
-      accountEmail: account.email,
-      accountId: account.id,
       body: upstream.body,
       headers: Object.fromEntries(
         Object.entries(upstream.headers).filter(([name]) =>
