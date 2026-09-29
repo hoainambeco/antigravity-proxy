@@ -7,6 +7,7 @@ export const vi: Translations = {
     syncQuota: 'Đồng bộ Quota',
     syncing: 'Đang đồng bộ...',
     syncTooltip: 'Đồng bộ Quotas và Models từ Google',
+    logout: 'Đăng xuất',
     gatewayOnline: 'Gateway Online',
     versionStandalone: 'v1.0.0 Standalone',
     brandSubtitle: 'LLM Gateway Manager',
@@ -131,10 +132,12 @@ export const vi: Translations = {
     resetCountdown: 'Reset sau {time}',
     resettingNow: 'Đang reset',
     claudeOAuthInitFailed: 'Khởi tạo Claude OAuth thất bại: {message}',
-    claudePasteCodeRequired: 'Vui lòng dán mã code hoặc URL callback từ trình duyệt',
+    claudePasteCodeRequired:
+      'Vui lòng dán mã code hoặc URL callback từ trình duyệt',
     claudeExchangeFailed: 'Đổi token Claude OAuth thất bại: {message}',
     openaiOAuthInitFailed: 'Khởi tạo OpenAI OAuth thất bại: {message}',
-    openaiPasteCodeRequired: 'Vui lòng dán mã code hoặc URL callback từ trình duyệt',
+    openaiPasteCodeRequired:
+      'Vui lòng dán mã code hoặc URL callback từ trình duyệt',
     openaiExchangeFailed: 'Đổi token OpenAI OAuth thất bại: {message}',
     copilotPollError: 'Lỗi xác thực Copilot: {message}',
     copilotStartFailed: 'Không thể bắt đầu xác thực Copilot: {message}',
@@ -154,8 +157,7 @@ export const vi: Translations = {
       copilotTab: 'Copilot',
       openaiTab: 'OpenAI',
       google: {
-        desc:
-          'Đăng nhập tài khoản Google Cloud Code / Antigravity qua OAuth tự động. Hệ thống sẽ tự cấp quyền và đồng bộ hạn mức quota.',
+        desc: 'Đăng nhập tài khoản Google Cloud Code / Antigravity qua OAuth tự động. Hệ thống sẽ tự cấp quyền và đồng bộ hạn mức quota.',
         opening: 'Đang mở liên kết OAuth...',
         openLogin: 'Mở trang đăng nhập Google',
       },
@@ -206,7 +208,8 @@ export const vi: Translations = {
         jsonContentLabel: 'Nội dung JSON auth.json',
         step1: 'Bước 1: Ủy quyền trên OpenAI',
         openLogin: 'Mở trang đăng nhập OpenAI OAuth',
-        oauthDesc: 'Cửa sổ đăng nhập chính thức của OpenAI / Codex sẽ mở ra. Sau khi hoàn tất bấm Authorize.',
+        oauthDesc:
+          'Cửa sổ đăng nhập chính thức của OpenAI / Codex sẽ mở ra. Sau khi hoàn tất bấm Authorize.',
         step2: 'Bước 2: Dán mã code hoặc URL callback',
         codePlaceholder: 'Dán URL hoặc mã code nhận được từ trình duyệt...',
         completing: 'Đang hoàn tất đăng nhập...',
@@ -243,7 +246,8 @@ export const vi: Translations = {
     ruleBasedTitle: 'Định tuyến Model theo Rule',
     ruleBasedDesc:
       'Xác định mẫu khớp model, chuỗi ưu tiên fallback, và định tuyến khi rate-limit giữa các nhóm provider.',
-    noRules: 'Chưa có rule routing tùy chỉnh. Pipeline mặc định sẽ được sử dụng.',
+    noRules:
+      'Chưa có rule routing tùy chỉnh. Pipeline mặc định sẽ được sử dụng.',
     defaultPipelineTitle: 'Pipeline Mặc định (Fallback khi không có rule khớp)',
     pipelineLabel: 'Pipeline:',
     patternLabel: 'Model Regex Pattern',

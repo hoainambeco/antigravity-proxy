@@ -9,19 +9,18 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { Transform, type Readable } from 'node:stream';
 import { Observable } from 'rxjs';
 
-import {
-  trafficAuditService,
-  type AuditSseBodyWriter,
-  type AuditHandle,
-  type UpstreamAttemptHandle,
-} from './traffic-audit.service';
-import type {
-  CompleteUpstreamAttemptInput,
-  StartUpstreamAttemptInput,
-} from './traffic-audit.types';
-import { classifyHttpTraffic } from './traffic-classifier';
-import { IncrementalSseRedactor } from './incremental-sse-redactor';
 import { auditJsonObject, parseAuditJsonBody } from './audit-json-object';
+import {
+  detectAuditOutputModalities,
+  mergeAuditOutputModalities,
+  type AuditOutputModalities,
+} from './audit-output-modality';
+import {
+  extractAuditUsage,
+  mergeAuditUsage,
+  type AuditUsage,
+} from './audit-usage';
+import { IncrementalSseRedactor } from './incremental-sse-redactor';
 import {
   firstHeader,
   inferProtocol,
@@ -30,12 +29,17 @@ import {
   resolveStableSessionId,
   resolveThoughtSession,
 } from './traffic-audit-http-metadata';
-import { extractAuditUsage, mergeAuditUsage, type AuditUsage } from './audit-usage';
 import {
-  detectAuditOutputModalities,
-  mergeAuditOutputModalities,
-  type AuditOutputModalities,
-} from './audit-output-modality';
+  trafficAuditService,
+  type AuditHandle,
+  type AuditSseBodyWriter,
+  type UpstreamAttemptHandle,
+} from './traffic-audit.service';
+import type {
+  CompleteUpstreamAttemptInput,
+  StartUpstreamAttemptInput,
+} from './traffic-audit.types';
+import { classifyHttpTraffic } from './traffic-classifier';
 
 export { normalizeSseForAudit } from './normalize-sse-for-audit';
 export { createThoughtSessionKey } from './traffic-audit-http-metadata';
@@ -79,7 +83,8 @@ interface HttpAuditState extends TrafficAuditRequestContext {
   sseWriter?: AuditSseBodyWriter | null;
 }
 
-const requestContextStorage = new AsyncLocalStorage<TrafficAuditRequestContext>();
+const requestContextStorage =
+  new AsyncLocalStorage<TrafficAuditRequestContext>();
 const requestStates = new WeakMap<object, HttpAuditState>();
 const completedRequestKeys = new WeakSet<object>();
 
@@ -97,7 +102,8 @@ export function captureHijackedHttpResponseChunk(
     return;
   }
   const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-  state.hijackedResponseBytes = (state.hijackedResponseBytes ?? 0) + buffer.byteLength;
+  state.hijackedResponseBytes =
+    (state.hijackedResponseBytes ?? 0) + buffer.byteLength;
   const redactor = (state.sseRedactor ??= createStateSseRedactor(state));
   state.sseWriter ??= trafficAuditService.beginParentSse(state.parent);
   for (const sanitized of redactor.push(buffer)) {
@@ -123,7 +129,8 @@ export function completeHijackedHttpResponse(
       state.responsePartial = true;
     }
   }
-  const transportPartial = options.partial === true && final?.result.terminalEventSeen !== true;
+  const transportPartial =
+    options.partial === true && final?.result.terminalEventSeen !== true;
   state.responsePartial = state.responsePartial || transportPartial;
   if (options.error) {
     state.error = options.error;
@@ -142,15 +149,22 @@ export function completeHijackedHttpResponse(
   completeHttpAuditStateAfterCapture(state, reply);
 }
 
-export function getTrafficAuditRequestContext(): TrafficAuditRequestContext | undefined {
+export function getTrafficAuditRequestContext():
+  | TrafficAuditRequestContext
+  | undefined {
   return requestContextStorage.getStore();
 }
 
 export function getProxyResponseTimingContext(
   request?: FastifyRequest,
-): Pick<TrafficAuditRequestContext, 'clientSessionId' | 'proxyTiming'> | undefined {
+):
+  | Pick<TrafficAuditRequestContext, 'clientSessionId' | 'proxyTiming'>
+  | undefined {
   if (request) {
-    return requestStates.get(requestStateKey(request)) ?? requestContextStorage.getStore();
+    return (
+      requestStates.get(requestStateKey(request)) ??
+      requestContextStorage.getStore()
+    );
   }
   return requestContextStorage.getStore();
 }
@@ -170,10 +184,14 @@ export function startCurrentUpstreamAttempt(
     return null;
   }
   context.attemptSequence += 1;
-  return trafficAuditService.startAttempt(context.parent, context.attemptSequence, {
-    ...input,
-    accountId: input.accountId ?? context.currentAccountId ?? undefined,
-  });
+  return trafficAuditService.startAttempt(
+    context.parent,
+    context.attemptSequence,
+    {
+      ...input,
+      accountId: input.accountId ?? context.currentAccountId ?? undefined,
+    },
+  );
 }
 
 export function setCurrentAuditAccountId(accountId: string | null): void {
@@ -183,7 +201,9 @@ export function setCurrentAuditAccountId(accountId: string | null): void {
   }
 }
 
-export function setCurrentAuditAllowedAccountIds(accountIds: string[] | null | undefined): void {
+export function setCurrentAuditAllowedAccountIds(
+  accountIds: string[] | null | undefined,
+): void {
   const context = getTrafficAuditRequestContext();
   if (context) {
     context.allowedAccountIds = accountIds ?? null;
@@ -196,18 +216,48 @@ export function getCurrentAllowedAccountIds(): string[] | null | undefined {
     return context.allowedAccountIds;
   }
   const req = (context as any)?.request;
-  const apiKeyInfo = req?.apiKeyInfo as { allowedAccountIds?: string[] | null } | undefined;
+  const apiKeyInfo = req?.apiKeyInfo as
+    | { allowedAccountIds?: string[] | null }
+    | undefined;
   if (apiKeyInfo?.allowedAccountIds !== undefined) {
     return apiKeyInfo.allowedAccountIds;
   }
   return undefined;
 }
 
+/**
+ * True when the request currently being handled came from the loopback interface.
+ * Used to gate host-only features (e.g. reading local video files) so a remote client
+ * cannot reach them. `request.ip` is the socket address: `trustProxy` is never set, so
+ * an `X-Forwarded-For` header cannot spoof it.
+ */
+export function getCurrentRequestLoopback(): boolean {
+  const context = getTrafficAuditRequestContext();
+  const request = (context as { request?: FastifyRequest } | undefined)
+    ?.request;
+  return isLoopbackIp(request?.ip);
+}
+
+export function isLoopbackIp(ip: string | undefined | null): boolean {
+  if (!ip) {
+    return false;
+  }
+  const normalized = ip.trim().toLowerCase();
+  return (
+    normalized === '::1' ||
+    normalized === '::ffff:127.0.0.1' ||
+    normalized.startsWith('127.')
+  );
+}
+
 /** Capture upstream usage that may be intentionally omitted from a client-compatible response. */
 export function captureCurrentAuditUsage(value: unknown): void {
   const context = getTrafficAuditRequestContext();
   if (context) {
-    context.upstreamUsage = mergeAuditUsage(context.upstreamUsage, extractAuditUsage(value));
+    context.upstreamUsage = mergeAuditUsage(
+      context.upstreamUsage,
+      extractAuditUsage(value),
+    );
   }
 }
 
@@ -221,14 +271,19 @@ export function completeCurrentUpstreamAttempt(
 /** Runs Nest handlers inside the request context created by the Fastify lifecycle hooks. */
 @Injectable()
 export class TrafficAuditContextInterceptor implements NestInterceptor {
-  public intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+  public intercept(
+    context: ExecutionContext,
+    next: CallHandler,
+  ): Observable<unknown> {
     const request = context.switchToHttp().getRequest<object>();
     const state = requestStates.get(requestStateKey(request));
     if (!state) {
       return next.handle();
     }
     return new Observable((subscriber) =>
-      requestContextStorage.run(state, () => next.handle().subscribe(subscriber)),
+      requestContextStorage.run(state, () =>
+        next.handle().subscribe(subscriber),
+      ),
     );
   }
 }
@@ -281,7 +336,11 @@ export function registerTrafficAuditHttpHooks(instance: FastifyInstance): void {
       reply.raw.once('close', () => {
         if (!reply.raw.writableFinished) {
           state.responsePartial = true;
-          void completeHttpAuditStateAfterCapture(state, reply, 'client_disconnected');
+          void completeHttpAuditStateAfterCapture(
+            state,
+            reply,
+            'client_disconnected',
+          );
         }
       });
       return capturingStream;
@@ -337,9 +396,11 @@ function completeHttpAuditState(
     mergeAuditUsage(state.responseUsage, extractAuditUsage(state.responseBody)),
     state.upstreamUsage,
   );
-  const apiKeyInfo = (state.request as unknown as {
-    apiKeyInfo?: { keyId?: string };
-  }).apiKeyInfo;
+  const apiKeyInfo = (
+    state.request as unknown as {
+      apiKeyInfo?: { keyId?: string };
+    }
+  ).apiKeyInfo;
   trafficAuditService.completeParent(state.parent, {
     apiKeyId: apiKeyInfo?.keyId,
     error: state.error,
@@ -360,7 +421,9 @@ function completeHttpAuditState(
   requestStates.delete(stateKey);
 }
 
-function ensureHttpState(request: FastifyRequest | null | undefined): HttpAuditState | undefined {
+function ensureHttpState(
+  request: FastifyRequest | null | undefined,
+): HttpAuditState | undefined {
   if (!request || typeof request !== 'object') {
     return undefined;
   }
@@ -405,11 +468,14 @@ function createProxyResponseTimingState(): ProxyResponseTimingState {
 
 function startHttpParent(request: FastifyRequest): AuditHandle | null {
   const headers = request.headers;
-  const forwarded = firstHeader(headers['x-forwarded-for'])?.split(',')[0]?.trim();
+  const forwarded = firstHeader(headers['x-forwarded-for'])
+    ?.split(',')[0]
+    ?.trim();
   const clientIp = forwarded || firstHeader(headers['x-real-ip']) || request.ip;
   const protocol = inferProtocol(request.url);
   const url = request.url;
-  const apiKeyInfo = (request as unknown as { apiKeyInfo?: { keyId?: string } }).apiKeyInfo;
+  const apiKeyInfo = (request as unknown as { apiKeyInfo?: { keyId?: string } })
+    .apiKeyInfo;
   return trafficAuditService.startParent({
     apiKeyId: apiKeyInfo?.keyId,
     clientIp,
@@ -440,7 +506,10 @@ function isReadable(value: unknown): value is Readable {
   );
 }
 
-function createCapturingTransform(payload: Readable, state: HttpAuditState): Transform {
+function createCapturingTransform(
+  payload: Readable,
+  state: HttpAuditState,
+): Transform {
   const redactor = createStateSseRedactor(state);
   const writer = trafficAuditService.beginParentSse(state.parent);
   state.sseRedactor = redactor;
@@ -508,7 +577,10 @@ function createStateSseRedactor(state: HttpAuditState): IncrementalSseRedactor {
         state.outputModalities ?? null,
         detectAuditOutputModalities(event),
       );
-      state.responseUsage = mergeAuditUsage(state.responseUsage, extractAuditUsage(event));
+      state.responseUsage = mergeAuditUsage(
+        state.responseUsage,
+        extractAuditUsage(event),
+      );
     },
   });
 }

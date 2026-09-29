@@ -7,6 +7,7 @@ export const en: Translations = {
     syncQuota: 'Sync Quota',
     syncing: 'Syncing...',
     syncTooltip: 'Sync Quotas and Models from Google',
+    logout: 'Log out',
     gatewayOnline: 'Gateway Online',
     versionStandalone: 'v1.0.0 Standalone',
     brandSubtitle: 'LLM Gateway Manager',
@@ -132,10 +133,12 @@ export const en: Translations = {
     resetCountdown: 'Resets in {time}',
     resettingNow: 'Resetting',
     claudeOAuthInitFailed: 'Failed to initialize Claude OAuth: {message}',
-    claudePasteCodeRequired: 'Please paste the code or callback URL from the browser',
+    claudePasteCodeRequired:
+      'Please paste the code or callback URL from the browser',
     claudeExchangeFailed: 'Failed to exchange Claude OAuth token: {message}',
     openaiOAuthInitFailed: 'Failed to initialize OpenAI OAuth: {message}',
-    openaiPasteCodeRequired: 'Please paste the code or callback URL from the browser',
+    openaiPasteCodeRequired:
+      'Please paste the code or callback URL from the browser',
     openaiExchangeFailed: 'Failed to exchange OpenAI OAuth token: {message}',
     copilotPollError: 'Copilot authentication error: {message}',
     copilotStartFailed: 'Could not start Copilot authentication: {message}',
@@ -155,8 +158,7 @@ export const en: Translations = {
       copilotTab: 'Copilot',
       openaiTab: 'OpenAI',
       google: {
-        desc:
-          'Sign in with a Google Cloud Code / Antigravity account via automatic OAuth. The system grants permissions and syncs quota automatically.',
+        desc: 'Sign in with a Google Cloud Code / Antigravity account via automatic OAuth. The system grants permissions and syncs quota automatically.',
         opening: 'Opening OAuth link...',
         openLogin: 'Open Google Login Page',
       },
@@ -192,7 +194,8 @@ export const en: Translations = {
         step1: 'Step 1: Copy the 8-character verification code below:',
         step2: 'Step 2: Open the GitHub link and paste the verification code:',
         open: 'Open {uri}',
-        listening: 'System is automatically listening for GitHub authorization...',
+        listening:
+          'System is automatically listening for GitHub authorization...',
         emailLabel: 'Identifier Email',
         tokenLabel: 'GitHub Copilot Token (ghu_...)',
       },
@@ -207,7 +210,8 @@ export const en: Translations = {
         jsonContentLabel: 'auth.json JSON content',
         step1: 'Step 1: Authorize on OpenAI',
         openLogin: 'Open OpenAI OAuth Login Page',
-        oauthDesc: 'The official OpenAI / Codex login window will open. Click Authorize when done.',
+        oauthDesc:
+          'The official OpenAI / Codex login window will open. Click Authorize when done.',
         step2: 'Step 2: Paste the code or callback URL',
         codePlaceholder: 'Paste the URL or code received from the browser...',
         completing: 'Completing login...',

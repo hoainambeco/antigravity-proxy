@@ -1,3 +1,4 @@
+import { redactUrlCredentials } from '@/modules/proxy-gateway/audit/audit-sanitizer';
 import { isObjectLike, isString } from 'lodash-es';
 
 /**
@@ -42,11 +43,20 @@ const MIN_UNLABELED_BASE64_LENGTH = 512;
 const DATA_URL_PATTERN =
   /data:(?<mime>[\w.+-]+\/[\w.+-]+)(?<metadata>(?:;[^,;]*)*),(?<data>[A-Za-z0-9+/=]+)/gi;
 const URL_CREDENTIAL_PATTERN = /\b((?:https?|socks5?):\/\/)[^/\s]*@/gi;
-const BASE64_FIELD_KEYS = new Set(['b64_json', 'base64', 'base64_data', 'base64data']);
+const BASE64_FIELD_KEYS = new Set([
+  'b64_json',
+  'base64',
+  'base64_data',
+  'base64data',
+]);
 
 function estimateBase64ByteLength(value: string): number {
   const normalized = value.replace(/\s+/g, '');
-  const padding = normalized.endsWith('==') ? 2 : normalized.endsWith('=') ? 1 : 0;
+  const padding = normalized.endsWith('==')
+    ? 2
+    : normalized.endsWith('=')
+      ? 1
+      : 0;
   return Math.max(0, Math.floor((normalized.length * 3) / 4) - padding);
 }
 
@@ -64,13 +74,20 @@ function isLikelyBase64(value: string): boolean {
   );
 }
 
-function sanitizeString(value: string, key?: string, mimeType?: string): string {
+function sanitizeString(
+  value: string,
+  key?: string,
+  mimeType?: string,
+): string {
   const normalizedKey = key?.toLowerCase();
   const isImageDataField =
-    normalizedKey === 'data' && mimeType?.trim().toLowerCase().startsWith('image/') === true;
+    normalizedKey === 'data' &&
+    mimeType?.trim().toLowerCase().startsWith('image/') === true;
   if (
     normalizedKey &&
-    (BASE64_FIELD_KEYS.has(normalizedKey) || isImageDataField || isLikelyBase64(value))
+    (BASE64_FIELD_KEYS.has(normalizedKey) ||
+      isImageDataField ||
+      isLikelyBase64(value))
   ) {
     return summarizeBase64(value, mimeType);
   }
@@ -79,22 +96,32 @@ function sanitizeString(value: string, key?: string, mimeType?: string): string 
     return summarizeBase64(value, mimeType);
   }
 
-  const withoutUrlCredentials = value.replace(URL_CREDENTIAL_PATTERN, '$1[REDACTED]@');
+  const withoutUrlCredentials = value.replace(
+    URL_CREDENTIAL_PATTERN,
+    '$1[REDACTED]@',
+  );
 
-  return withoutUrlCredentials.replace(DATA_URL_PATTERN, (...args: unknown[]) => {
-    const match = args[0] as string;
-    const groups = args.at(-1) as { mime?: string; metadata?: string; data?: string } | undefined;
-    const isBase64 = groups?.metadata?.split(';').some((part) => part.toLowerCase() === 'base64');
-    if (!isBase64) {
-      return match;
-    }
-    if (!groups?.data) {
-      return '[data URL redacted]';
-    }
-    return `[data URL redacted mime=${groups.mime ?? 'unknown'} bytes=${estimateBase64ByteLength(
-      groups.data,
-    )}]`;
-  });
+  return withoutUrlCredentials.replace(
+    DATA_URL_PATTERN,
+    (...args: unknown[]) => {
+      const match = args[0] as string;
+      const groups = args.at(-1) as
+        | { mime?: string; metadata?: string; data?: string }
+        | undefined;
+      const isBase64 = groups?.metadata
+        ?.split(';')
+        .some((part) => part.toLowerCase() === 'base64');
+      if (!isBase64) {
+        return match;
+      }
+      if (!groups?.data) {
+        return '[data URL redacted]';
+      }
+      return `[data URL redacted mime=${groups.mime ?? 'unknown'} bytes=${estimateBase64ByteLength(
+        groups.data,
+      )}]`;
+    },
+  );
 }
 
 function resolveMimeType(obj: object): string | undefined {
@@ -164,6 +191,29 @@ function sanitizeWithSeen(
   }
 
   return obj;
+}
+
+/**
+ * Redacts common credential spellings from free text (log lines, upstream error bodies).
+ * Keys that live under a known object key are already handled by `sanitizeObject`; this
+ * covers values embedded inside prose, which object-key masking cannot reach.
+ */
+const SENSITIVE_TEXT_PATTERNS: Array<[RegExp, string]> = [
+  [/\bBearer\s+[A-Za-z0-9._~+/=-]{16,}/giu, 'Bearer [REDACTED]'],
+  [/sk-(?:ant|proj|ag|re|org)?-[A-Za-z0-9_-]{8,}/giu, 'sk-[REDACTED]'],
+  [/\bghu_[A-Za-z0-9]{16,}\b/giu, 'ghu_[REDACTED]'],
+  [/\bgho_[A-Za-z0-9]{16,}\b/giu, 'gho_[REDACTED]'],
+  [/\bgithub_pat_[A-Za-z0-9_]{16,}\b/giu, 'github_pat_[REDACTED]'],
+  [/\bAIza[0-9A-Za-z_-]{35}\b/gu, '[REDACTED]'], // Google API key
+  [/GOCSPX-[A-Za-z0-9_-]{16,}/gu, 'GOCSPX-[REDACTED]'], // Google OAuth client secret
+];
+
+export function redactSensitiveText(value: string): string {
+  let redacted = redactUrlCredentials(value);
+  for (const [pattern, replacement] of SENSITIVE_TEXT_PATTERNS) {
+    redacted = redacted.replace(pattern, replacement);
+  }
+  return redacted;
 }
 
 /**

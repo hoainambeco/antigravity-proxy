@@ -7,6 +7,7 @@ export interface Translations {
     syncQuota: string;
     syncing: string;
     syncTooltip: string;
+    logout: string;
     gatewayOnline: string;
     versionStandalone: string;
     brandSubtitle: string;

@@ -1,4 +1,5 @@
-import { ApiKeyService } from "@/modules/api-key/api-key.service";
+import { hashApiKey, hashesEqual } from '@/modules/api-key/api-key-hash';
+import { ApiKeyService } from '@/modules/api-key/api-key.service';
 import {
   CanActivate,
   ExecutionContext,
@@ -7,18 +8,18 @@ import {
   Logger,
   Optional,
   UnauthorizedException,
-} from "@nestjs/common";
-import { getServerConfig } from "../../../../server/server-config";
-import { setCurrentAuditAllowedAccountIds } from "../../audit/traffic-audit-context";
+} from '@nestjs/common';
+import { getServerConfig } from '../../../../server/server-config';
+import { setCurrentAuditAllowedAccountIds } from '../../audit/traffic-audit-context';
 import {
   buildAuthErrorBody,
   resolveAuthErrorSurface,
-} from "../common/auth-error-envelope";
+} from '../common/auth-error-envelope';
 import {
   extractApiKeyToken,
   hasConfiguredApiKey,
   type RequestHeaders,
-} from "./api-key-auth.util";
+} from './api-key-auth.util';
 
 @Injectable()
 export class ProxyGuard implements CanActivate {
@@ -31,14 +32,12 @@ export class ProxyGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context
-      .switchToHttp()
-      .getRequest<{
-        headers: RequestHeaders;
-        ip: string;
-        url?: string;
-        apiKeyInfo?: unknown;
-      }>();
+    const request = context.switchToHttp().getRequest<{
+      headers: RequestHeaders;
+      ip: string;
+      url?: string;
+      apiKeyInfo?: unknown;
+    }>();
 
     // 1. If ApiKeyService is available, use dynamic multi-key validation
     if (this.apiKeyService) {
@@ -54,32 +53,35 @@ export class ProxyGuard implements CanActivate {
         request.ip ||
         (request as any).raw?.socket?.remoteAddress ||
         (request as any).socket?.remoteAddress ||
-        "";
+        '';
       const isLoopback =
-        clientIp === "127.0.0.1" ||
-        clientIp === "::1" ||
-        clientIp === "::ffff:127.0.0.1" ||
-        clientIp.startsWith("127.");
+        clientIp === '127.0.0.1' ||
+        clientIp === '::1' ||
+        clientIp === '::ffff:127.0.0.1' ||
+        clientIp.startsWith('127.');
 
       const rawReq = (request as any).raw;
-      const method = rawReq?.method || "GET";
-      const url = request.url || "";
+      const method = rawReq?.method || 'GET';
+      const url = request.url || '';
       const isModelCatalogRoute =
-        method === "GET" &&
-        (url === "/v1/models" ||
-          url.startsWith("/v1/models?") ||
-          url.startsWith("/v1/models/") ||
-          url === "/v1beta/models" ||
-          url.startsWith("/v1beta/models?") ||
-          url.startsWith("/v1beta/models/"));
+        method === 'GET' &&
+        (url === '/v1/models' ||
+          url.startsWith('/v1/models?') ||
+          url.startsWith('/v1/models/') ||
+          url === '/v1beta/models' ||
+          url.startsWith('/v1beta/models?') ||
+          url.startsWith('/v1beta/models/'));
 
-      // Allow viewing model list without requiring key on localhost/browser
-      if (isModelCatalogRoute && (isLoopback || !clientToken)) {
+      // Model catalog is readable without a key only from the loopback interface
+      // (local browsers and editor-embedded agents). Remote callers must authenticate.
+      if (isModelCatalogRoute && isLoopback) {
         if (clientToken) {
           const authResult = await this.apiKeyService.validateKey(clientToken);
           if (authResult.valid) {
             request.apiKeyInfo = authResult;
-            setCurrentAuditAllowedAccountIds(authResult.allowedAccountIds ?? null);
+            setCurrentAuditAllowedAccountIds(
+              authResult.allowedAccountIds ?? null,
+            );
           }
         }
         return true;
@@ -90,7 +92,7 @@ export class ProxyGuard implements CanActivate {
           `Rejected request missing API key from ${request.ip} (${request.url})`,
         );
         throw new UnauthorizedException(
-          buildAuthErrorBody(surface, "API key is required"),
+          buildAuthErrorBody(surface, 'API key is required'),
         );
       }
 
@@ -102,14 +104,14 @@ export class ProxyGuard implements CanActivate {
       }
 
       this.logger.warn(
-        `Rejected unauthorized request from ${request.ip}: ${authResult.reason || "invalid_key"}`,
+        `Rejected unauthorized request from ${request.ip}: ${authResult.reason || 'invalid_key'}`,
       );
       const message =
-        authResult.reason === "disabled"
-          ? "API key is disabled"
-          : authResult.reason === "expired"
-            ? "API key has expired"
-            : "API key validation failed";
+        authResult.reason === 'disabled'
+          ? 'API key is disabled'
+          : authResult.reason === 'expired'
+            ? 'API key has expired'
+            : 'API key validation failed';
 
       throw new UnauthorizedException(buildAuthErrorBody(surface, message));
     }
@@ -119,18 +121,21 @@ export class ProxyGuard implements CanActivate {
     const apiKey = config?.api_key;
     const clientToken = extractApiKeyToken(request.headers);
 
-    if (!hasConfiguredApiKey(apiKey)) {
-      return true;
-    }
-
-    if (clientToken === apiKey) {
+    if (hasConfiguredApiKey(apiKey)) {
+      if (
+        clientToken !== null &&
+        hashesEqual(hashApiKey(clientToken), hashApiKey(apiKey))
+      ) {
+        return true;
+      }
+    } else {
       return true;
     }
 
     this.logger.warn(`Rejected unauthorized request from ${request.ip}`);
     const surface = resolveAuthErrorSurface(request);
     throw new UnauthorizedException(
-      buildAuthErrorBody(surface, "API key validation failed"),
+      buildAuthErrorBody(surface, 'API key validation failed'),
     );
   }
 }

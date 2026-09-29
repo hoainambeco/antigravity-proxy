@@ -5,11 +5,11 @@
 This project is a self-hosted proxy. The secrets it keeps on the machine that runs it are
 worth far more than the code:
 
-| File | Contents | Consequence if leaked |
-| --- | --- | --- |
-| `accounts.json` | Google OAuth refresh tokens, one per linked account | Full, renewable access to those Google accounts' Antigravity quota |
-| `.env` | `ANTIGRAVITY_OAUTH_CLIENT_ID` / `_SECRET`, `PROXY_API_KEY` | Credential pair revoked once reported; master key grants admin API access |
-| `data/antigravity.sqlite` | Client API key hashes, traffic audit logs | Audit rows contain full prompts and responses; the key hashes are not usable as credentials |
+| File                      | Contents                                                   | Consequence if leaked                                                                                                                                               |
+| ------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `accounts.json`           | Google OAuth refresh tokens, one per linked account        | Full, renewable access to those Google accounts' Antigravity quota                                                                                                  |
+| `.env`                    | `ANTIGRAVITY_OAUTH_CLIENT_ID` / `_SECRET`, `PROXY_API_KEY` | Credential pair revoked once reported; master key grants admin API access                                                                                           |
+| `data/antigravity.sqlite` | Client API key hashes, traffic audit metadata              | Key hashes are not usable as credentials; audit rows store metadata only (model, status, token counts, error message) — request/response bodies are never persisted |
 
 All three are listed in `.gitignore` and `.dockerignore`. Never commit them, never paste
 them into an issue, and never attach a database file to a bug report without deleting the
@@ -50,15 +50,18 @@ single-operator deployment. Treat them as reasons not to expose the proxy to the
 internet, not as vulnerabilities to report:
 
 - **Open Mode.** With no `PROXY_API_KEY` and no keys in the database, the proxy accepts
-  every request unauthenticated. It binds to `127.0.0.1` in that state, but an explicit
-  `HOST=0.0.0.0` overrides that protection. See "Exposing the proxy" in the README.
+  every request unauthenticated. It binds to `127.0.0.1` in that state; an explicit
+  `HOST=0.0.0.0` is refused at startup unless `ALLOW_OPEN_MODE_NON_LOOPBACK=1` is set, in
+  which case the proxy publishes an unauthenticated proxy over your Google accounts to the
+  whole network. See "Exposing the proxy" in the README.
 - **No rate limiting.** Nothing throttles API key guesses or request volume. This is
   deliberate: the proxy fronts long-running agent sessions, where a throttle interrupts
   real work more often than it stops an attacker.
 - **Permissive CORS.** The server calls `enableCors()` with no allowlist, so any origin
   may call it from a browser. Also deliberate: an allowlist breaks browser-based and
   editor-embedded agents that call the proxy from origins the operator cannot enumerate.
-- **Audit logs retain request and response bodies in full**, including prompts.
+- **Audit logs keep metadata only.** The `traffic_logs` table stores per-request metadata
+  (model, status, latency, token counts, error message), never request or response bodies.
 
 ## Not a vulnerability
 

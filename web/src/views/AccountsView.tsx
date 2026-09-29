@@ -1,21 +1,21 @@
-import React, { useEffect, useRef, useState } from 'react';
-import type { Account } from '../types';
-import { api } from '../api/client';
 import {
-  Users,
-  RefreshCw,
-  Trash2,
-  Plus,
   AlertCircle,
-  CheckCircle2,
-  ShieldAlert,
-  Clock,
-  ExternalLink,
-  Copy,
   Check,
+  CheckCircle2,
+  Clock,
+  Copy,
+  ExternalLink,
+  Plus,
+  RefreshCw,
+  ShieldAlert,
+  Trash2,
+  Users,
 } from 'lucide-react';
-import { useTranslation } from '../i18n';
+import React, { useEffect, useRef, useState } from 'react';
+import { api } from '../api/client';
 import { useToast } from '../components/Toast';
+import { useTranslation } from '../i18n';
+import type { Account } from '../types';
 
 function formatResetCountdown(resetTime: string, resettingText: string, prefixTemplate: string): string {
   const diffMs = new Date(resetTime).getTime() - Date.now();
@@ -137,7 +137,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onReload }
       const res = await api.getOAuthUrl();
       if (res?.url) {
         setOauthUrl(res.url);
-        const popup = window.open(res.url, '_blank', 'width=600,height=700');
+        const popup = window.open(res.url, '_blank', 'width=600,height=700,noopener,noreferrer');
         if (popup) {
           const timer = setInterval(() => {
             if (popup.closed) {
@@ -161,7 +161,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onReload }
       setSubmitting(true);
       const res = await api.initClaudeOAuth();
       setClaudeOAuthData(res);
-      window.open(res.authUrl, '_blank', 'width=600,height=700');
+      window.open(res.authUrl, '_blank', 'width=600,height=700,noopener,noreferrer');
     } catch (err: any) {
       toast.error(t('accounts.claudeOAuthInitFailed', { message: err.message }));
     } finally {
@@ -211,7 +211,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onReload }
       setSubmitting(true);
       const res = await api.initOpenAIOAuth();
       setOpenaiOAuthData(res);
-      window.open(res.authUrl, '_blank', 'width=600,height=700');
+      window.open(res.authUrl, '_blank', 'width=600,height=700,noopener,noreferrer');
     } catch (err: any) {
       toast.error(t('accounts.openaiOAuthInitFailed', { message: err.message }));
     } finally {

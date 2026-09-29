@@ -114,8 +114,8 @@ export function getConfiguredModelMapping(
   }
 
   const mapping: Record<string, string> = {
-    ...(proxy.custom_mapping ?? {}),
-    ...(proxy.anthropic_mapping ?? {}),
+    ...proxy.custom_mapping,
+    ...proxy.anthropic_mapping,
   };
 
   for (const route of proxy.model_aliases ?? []) {
