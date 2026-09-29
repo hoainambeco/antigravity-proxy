@@ -6,13 +6,15 @@
 .env.*.local
 .env.bak*
 accounts.json
+routing.json
 data/
 *.sqlite
 *.sqlite-*
 *.db
 *.db-*
 !.env.example
-!accounts.json.example
+!.accounts.json.example
+!routing.json.example
 
 # Dependencies
 node_modules/

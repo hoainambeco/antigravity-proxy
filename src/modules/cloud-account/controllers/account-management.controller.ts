@@ -13,9 +13,12 @@ import {
   Logger,
 } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
+import { jsonAccountStoreInstance } from '@/modules/proxy-gateway/server/modules/account-lease/adapters/json-account.store';
+import type { CloudAccount } from '@/modules/cloud-account/types';
 import { AccountLeaseService } from '@/modules/proxy-gateway/server/modules/account-lease/account-lease.service';
 import { GoogleAPIService } from '@/modules/cloud-account/services/GoogleAPIService';
 import { OAuthCallbackServer } from '@/modules/cloud-account/services/OAuthCallbackServer';
+import { OAuthProviderLoginService } from '@/modules/cloud-account/services/OAuthProviderLoginService';
 import { AdminGuard } from '@/modules/proxy-gateway/server/guards/admin.guard';
 import { Public } from '@/modules/proxy-gateway/server/guards/public.decorator';
 
@@ -32,6 +35,7 @@ export class AccountManagementController {
   constructor(
     private readonly accountLeaseService: AccountLeaseService,
     private readonly oauthCallbackServer: OAuthCallbackServer,
+    private readonly oauthProviderLoginService: OAuthProviderLoginService,
   ) {}
 
   @Get()
@@ -49,6 +53,248 @@ export class AccountManagementController {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  @Post()
+  async addAccount(@Body() body: any) {
+    const rawOauth = body?.claudeAiOauth || body?.claude_oauth;
+    const provider = body?.provider || (rawOauth ? 'anthropic' : undefined);
+
+    if (!provider) {
+      throw new HttpException('Provider is required', HttpStatus.BAD_REQUEST);
+    }
+
+    const id = body.id || `acc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const email = body.email || `${provider}-${Date.now()}@antigravity.proxy`;
+
+    const newAccount: CloudAccount = {
+      id,
+      provider,
+      auth_type: body.auth_type,
+      email,
+      name: body.name || null,
+      api_key: body.api_key || undefined,
+      session_key: body.session_key || undefined,
+      organization_id: body.organization_id || undefined,
+      github_token: body.github_token || undefined,
+      created_at: Date.now(),
+      last_used: Date.now(),
+      health: {},
+    };
+
+    if (rawOauth) {
+      newAccount.provider = 'anthropic';
+      newAccount.auth_type = 'cli_oauth';
+      newAccount.claude_oauth = rawOauth;
+      newAccount.claudeAiOauth = rawOauth;
+      const expiresInSec = typeof rawOauth.expiresAt === 'number'
+        ? Math.max(60, Math.floor((rawOauth.expiresAt - Date.now()) / 1000))
+        : 86400;
+
+      newAccount.token = {
+        access_token: rawOauth.accessToken,
+        refresh_token: rawOauth.refreshToken || '',
+        expires_in: expiresInSec,
+        expiry_timestamp: Math.floor(Date.now() / 1000) + expiresInSec,
+        token_type: 'Bearer',
+        email,
+      };
+    }
+
+    const rawOpenAiOauth = body?.tokens || body?.openai_oauth;
+    if (rawOpenAiOauth && (provider === 'openai' || body?.auth_mode === 'chatgpt')) {
+      const accessToken = rawOpenAiOauth.access_token || rawOpenAiOauth.accessToken;
+      const refreshToken = rawOpenAiOauth.refresh_token || rawOpenAiOauth.refreshToken;
+      const idToken = rawOpenAiOauth.id_token || rawOpenAiOauth.idToken;
+      const accountId = rawOpenAiOauth.account_id || rawOpenAiOauth.accountId;
+
+      newAccount.provider = 'openai';
+      newAccount.auth_type = 'cli_oauth';
+      newAccount.account_id = accountId;
+
+      let extractedEmail = body.email;
+      if (!extractedEmail && idToken) {
+        try {
+          const parts = idToken.split('.');
+          if (parts.length === 3) {
+            const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+            if (payload.email) extractedEmail = payload.email;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      if (extractedEmail) {
+        newAccount.email = extractedEmail;
+      }
+
+      const expiresInSec = 864_000;
+      newAccount.token = {
+        access_token: accessToken,
+        refresh_token: refreshToken || '',
+        expires_in: expiresInSec,
+        expiry_timestamp: Math.floor(Date.now() / 1000) + expiresInSec,
+        token_type: 'Bearer',
+        email: newAccount.email,
+      };
+
+      (newAccount as any).tokens = {
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        id_token: idToken,
+        account_id: accountId,
+      };
+      (newAccount as any).openai_oauth = {
+        accessToken,
+        refreshToken,
+        idToken,
+        accountId,
+        expiresAt: Date.now() + expiresInSec * 1000,
+      };
+    }
+
+    await jsonAccountStoreInstance.upsertAccount(newAccount);
+    await this.accountLeaseService.loadAccounts();
+
+    return {
+      success: true,
+      message: 'Account added successfully',
+      data: newAccount,
+    };
+  }
+
+  @Get('oauth/claude/init')
+  initClaudeOAuth(@Query('redirect_uri') customRedirectUri?: string) {
+    return this.oauthProviderLoginService.initClaudeOAuth(customRedirectUri);
+  }
+
+  @Post('oauth/claude/exchange')
+  async exchangeClaudeOAuth(
+    @Body()
+    body: {
+      code: string;
+      codeVerifier: string;
+      redirectUri: string;
+      state?: string;
+      email?: string;
+    },
+  ) {
+    if (!body?.code || !body?.codeVerifier || !body?.redirectUri) {
+      throw new HttpException(
+        'code, codeVerifier, and redirectUri are required',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const account = await this.oauthProviderLoginService.exchangeClaudeCode(body);
+    return { success: true, account };
+  }
+
+  @Get('oauth/openai/init')
+  initOpenAIOAuth(@Query('redirect_uri') customRedirectUri?: string) {
+    return this.oauthProviderLoginService.initOpenAIOAuth(customRedirectUri);
+  }
+
+  @Post('oauth/openai/exchange')
+  async exchangeOpenAIOAuth(
+    @Body()
+    body: {
+      code: string;
+      codeVerifier: string;
+      redirectUri: string;
+      email?: string;
+    },
+  ) {
+    if (!body?.code || !body?.codeVerifier || !body?.redirectUri) {
+      throw new HttpException(
+        'code, codeVerifier, and redirectUri are required',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const account = await this.oauthProviderLoginService.exchangeOpenAICode(body);
+    return { success: true, account };
+  }
+
+  @Get('oauth/openai/callback')
+  @Public()
+  async openAIOAuthCallback(
+    @Query('code') code?: string,
+    @Query('state') state?: string,
+    @Query('error') error?: string,
+    @Query('error_description') errorDescription?: string,
+  ) {
+    const html = (title: string, message: string, ok: boolean): string => {
+      const color = ok ? '#10b981' : '#ef4444';
+      return `<!DOCTYPE html>
+<html lang="vi">
+  <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${title}</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; background: #09090b; color: #e4e4e7; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+    .card { background: #18181b; border: 1px solid #27272a; border-radius: 16px; padding: 40px 48px; max-width: 460px; text-align: center; }
+    h2 { margin-top: 0; color: ${color}; }
+    p { color: #a1a1aa; line-height: 1.6; word-break: break-word; }
+    code { background: #27272a; padding: 2px 6px; border-radius: 6px; font-size: 12px; color: #e4e4e7; user-select: all; }
+    .btn { display: inline-block; margin-top: 12px; padding: 10px 20px; background: ${color}; color: #09090b; border-radius: 10px; text-decoration: none; font-weight: 600; }
+  </style>
+  </head>
+  <body><div class="card"><h2>${title}</h2><p>${message}</p>
+  <a class="btn" href="http://localhost:8045/accounts">Quay lại Dashboard</a></div></body>
+</html>`;
+    };
+
+    if (error || !code || !state) {
+      const errMsg = errorDescription || error || 'Thiếu mã code';
+      return html(
+        'Đăng nhập OpenAI thất bại',
+        `Không nhận được mã xác thực: <code>${errMsg}</code>`,
+        false,
+      );
+    }
+
+    const pending = OAuthProviderLoginService.consumeOpenAiState(state);
+    if (!pending) {
+      return html(
+        'Đăng nhập OpenAI thất bại',
+        'Trạng thái OAuth không hợp lệ hoặc đã hết hạn. Vui lòng thử lại.',
+        false,
+      );
+    }
+
+    try {
+      const account = await OAuthProviderLoginService.exchangeAndSaveOpenAiAccount({
+        code,
+        codeVerifier: pending.codeVerifier,
+        redirectUri: pending.redirectUri,
+      });
+      await this.accountLeaseService.loadAccounts();
+      this.logger.log(`OpenAI OAuth callback succeeded for ${account.email}`);
+      return html(
+        'Thành công!',
+        `Tài khoản <strong>${account.email}</strong> đã được thêm thành công qua OpenAI OAuth. Bạn có thể đóng cửa sổ này.`,
+        true,
+      );
+    } catch (err) {
+      this.logger.error('OpenAI OAuth callback exchange failed', err);
+      return html(
+        'Xảy ra lỗi',
+        err instanceof Error ? err.message : String(err),
+        false,
+      );
+    }
+  }
+
+  @Post('copilot/device/code')
+  async startCopilotDeviceFlow() {
+    return await this.oauthProviderLoginService.startCopilotDeviceFlow();
+  }
+
+  @Post('copilot/device/poll')
+  async pollCopilotDeviceCode(@Body() body: { device_code: string; email?: string }) {
+    if (!body?.device_code) {
+      throw new HttpException('device_code is required', HttpStatus.BAD_REQUEST);
+    }
+    return await this.oauthProviderLoginService.pollCopilotDeviceCode(body);
   }
 
   @Post('sync')

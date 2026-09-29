@@ -5,12 +5,13 @@ import { FilesModule } from '../files/files.module';
 import { SharedServicesModule } from '../../shared/shared-services.module';
 import { AccountLeaseModule } from '../account-lease/account-lease.module';
 import { GeminiModule } from '../gemini/gemini.module';
+import { DispatcherModule } from '@/modules/proxy-gateway/dispatcher/dispatcher.module';
 import { AnthropicCompleteController } from './anthropic-complete.controller';
 import { AnthropicController } from './anthropic.controller';
 import { AnthropicService } from './anthropic.service';
 
 @Module({
-  imports: [AccountLeaseModule, FilesModule, GeminiModule, SharedServicesModule],
+  imports: [AccountLeaseModule, FilesModule, GeminiModule, SharedServicesModule, DispatcherModule],
   controllers: [AnthropicController, AnthropicCompleteController],
   providers: [AnthropicService, ProxyGuard],
   exports: [AnthropicService],

@@ -9,7 +9,8 @@ import {
   Optional,
 } from '@nestjs/common';
 import type { CloudAccount, CloudAccountHealth } from '@/modules/cloud-account/types';
-import { RateLimitTrackerService } from '../../shared/services/rate-limit-tracker.service';
+import type { UpstreamProviderType } from '@/modules/proxy-gateway/routing/routing.types';
+import { RateLimitTrackerService, RateLimitReason } from '../../shared/services/rate-limit-tracker.service';
 import {
   ACCOUNT_LEASE_ACCOUNT_STORE,
   ACCOUNT_LEASE_UPSTREAM,
@@ -45,6 +46,8 @@ import {
   ImageAccountPermit,
   ImageAccountSchedulerService,
 } from './image-account-scheduler.service';
+import { ProviderModelDiscoveryService } from '@/modules/proxy-gateway/upstreams/provider-model-discovery.service';
+import type { ProviderUsageInfo } from '@/modules/proxy-gateway/upstreams/provider-model-discovery.service';
 import { getServerConfig } from '@/server/server-config';
 
 export interface GetNextTokenOptions {
@@ -93,6 +96,10 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
   private readonly forbiddenCooldownMs = 30 * 60 * 1000;
 
   private tokens: Map<string, TokenData> = new Map();
+  private allAccounts: Map<string, CloudAccount> = new Map();
+  private providerRoundRobinIndex: Map<string, number> = new Map();
+  private discoveredProviderModels: Map<string, Set<string>> = new Map();
+  private discoveredProviderUsage: Map<string, ProviderUsageInfo> = new Map();
   private readonly configPolicy = new AccountLeaseConfigPolicy();
   private readonly quotaRefreshPolicy: AccountLeaseQuotaRefreshPolicy;
   private readonly tokenCache: AccountLeaseTokenCache;
@@ -120,6 +127,9 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
     @Optional()
     @Inject(ImageAccountSchedulerService)
     private readonly imageScheduler: ImageAccountSchedulerService = new ImageAccountSchedulerService(),
+    @Optional()
+    @Inject(ProviderModelDiscoveryService)
+    private readonly providerModelDiscovery?: ProviderModelDiscoveryService,
   ) {
     this.quotaRefreshPolicy = new AccountLeaseQuotaRefreshPolicy({
       accountStore: this.accountStore,
@@ -187,21 +197,31 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
   }
 
   private periodicQuotaSyncTimer?: NodeJS.Timeout;
+  private providerModelSyncTimer?: NodeJS.Timeout;
 
   async onModuleInit() {
     await this.loadAccounts();
     this.restorePersistedLongImageLimits();
     void this.syncAllAccountQuotas();
+    void this.refreshDiscoveredProviderModels();
     this.periodicQuotaSyncTimer = setInterval(() => {
       void this.syncAllAccountQuotas();
     }, 60 * 60 * 1000);
     this.periodicQuotaSyncTimer.unref?.();
+    this.providerModelSyncTimer = setInterval(() => {
+      void this.refreshDiscoveredProviderModels();
+    }, 10 * 60 * 1000);
+    this.providerModelSyncTimer.unref?.();
   }
 
   async onModuleDestroy(): Promise<void> {
     if (this.periodicQuotaSyncTimer) {
       clearInterval(this.periodicQuotaSyncTimer);
       this.periodicQuotaSyncTimer = undefined;
+    }
+    if (this.providerModelSyncTimer) {
+      clearInterval(this.providerModelSyncTimer);
+      this.providerModelSyncTimer = undefined;
     }
     await this.hydrationPolicy.drainBackgroundPersistence();
   }
@@ -237,6 +257,12 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
 
   async loadAccounts(): Promise<number> {
     try {
+      const rawAccounts = await this.accountStore.getAccounts();
+      this.allAccounts.clear();
+      for (const acc of rawAccounts) {
+        this.allAccounts.set(acc.id, acc);
+      }
+      void this.refreshDiscoveredProviderModels();
       return await this.tokenCache.loadAccounts();
     } finally {
       this.syncImageSchedulerAccounts();
@@ -254,6 +280,11 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
   async reloadAllAccountsOrThrow(): Promise<number> {
     let count: number;
     try {
+      const rawAccounts = await this.accountStore.getAccounts();
+      this.allAccounts.clear();
+      for (const acc of rawAccounts) {
+        this.allAccounts.set(acc.id, acc);
+      }
       count = await this.tokenCache.loadAccountsOrThrow();
     } finally {
       this.syncImageSchedulerAccounts();
@@ -262,6 +293,85 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
     this.clearAllSessions();
     void this.syncAllAccountQuotas();
     return count;
+  }
+
+  public getAccountsForProvider(providerType: UpstreamProviderType): CloudAccount[] {
+    const accounts = Array.from(this.allAccounts.values());
+
+    return accounts.filter((acc) => {
+      if (acc.is_active === false) return false;
+      if (this.rateLimitTracker.isRateLimited(acc.id)) return false;
+
+      switch (providerType) {
+        case 'google':
+          return (
+            (acc.provider === 'google' || !acc.provider) &&
+            Boolean(acc.token?.access_token || acc.token?.refresh_token)
+          );
+        case 'anthropic_api':
+          return acc.provider === 'anthropic' && Boolean(acc.api_key);
+        case 'anthropic_oauth':
+          return (
+            acc.provider === 'anthropic' &&
+            Boolean(acc.token?.access_token || acc.token?.refresh_token)
+          );
+        case 'anthropic_web':
+          return (
+            acc.provider === 'anthropic' &&
+            Boolean(acc.session_key || acc.auth_type === 'web_session')
+          );
+        case 'copilot':
+          return (
+            (acc.provider === 'copilot' || acc.provider === 'openai') &&
+            Boolean(acc.github_token || acc.copilot_token || acc.auth_type === 'copilot_token')
+          );
+        case 'openai_api':
+          return acc.provider === 'openai' && Boolean(acc.api_key);
+        case 'chatgpt_web':
+          return (
+            acc.provider === 'openai' &&
+            (acc.auth_type === 'web_session' || Boolean(acc.token?.access_token))
+          );
+        default:
+          return false;
+      }
+    });
+  }
+
+  public getNextAccountForProvider(
+    providerType: UpstreamProviderType,
+    options?: { excludeAccountIds?: string[]; model?: string },
+  ): CloudAccount | null {
+    const candidates = this.getAccountsForProvider(providerType);
+    const excluded = new Set(options?.excludeAccountIds || []);
+    const available = candidates.filter((acc) => !excluded.has(acc.id));
+
+    if (available.length === 0) {
+      return null;
+    }
+
+    const currentIndex = this.providerRoundRobinIndex.get(providerType) || 0;
+    const selected = available[currentIndex % available.length];
+    this.providerRoundRobinIndex.set(providerType, currentIndex + 1);
+
+    selected.last_used = Date.now();
+    return selected;
+  }
+
+  public reportProviderRateLimit(
+    accountId: string,
+    providerType: UpstreamProviderType,
+    cooldownMs: number = 60_000,
+  ): void {
+    const resetTimeIso = new Date(Date.now() + cooldownMs).toISOString();
+    this.rateLimitTracker.setLockoutUntilIso(
+      accountId,
+      resetTimeIso,
+      RateLimitReason.RateLimitExceeded,
+    );
+    this.logger.warn(
+      `Account ${accountId} for provider ${providerType} marked as rate-limited until ${resetTimeIso}`,
+    );
   }
 
   clearAllSessions(): void {
@@ -277,6 +387,7 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
         id: account.id,
         email: account.email,
         provider: account.provider,
+        auth_type: account.auth_type,
         project_id: account.token?.project_id,
         created_at: account.created_at,
         last_used: account.last_used,
@@ -284,8 +395,36 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
         is_cooldown: isLocked,
         cooldown_remaining_sec: remainingWaitSec,
         quota: account.quota,
+        provider_models: this.getDiscoveredModelsForAccount(account),
+        provider_usage: this.discoveredProviderUsage.get(account.id),
       };
     });
+  }
+
+  /**
+   * Returns the dynamically discovered model IDs for a non-Google account, so the UI can
+   * show which models an Anthropic / OpenAI / Copilot account actually serves even though
+   * it has no Google-style quota payload.
+   */
+  private getDiscoveredModelsForAccount(account: CloudAccount): string[] | undefined {
+    if (!account.provider || account.provider === 'google') return undefined;
+    const key = this.providerKeyForAccount(account);
+    const models = this.discoveredProviderModels.get(key);
+    if (!models || models.size === 0) return undefined;
+    return Array.from(models).sort();
+  }
+
+  private providerKeyForAccount(account: CloudAccount): string {
+    if (account.provider === 'anthropic') {
+      return account.auth_type === 'api_key' ? 'anthropic_api' : 'anthropic_oauth';
+    }
+    if (account.provider === 'openai') {
+      return account.auth_type === 'api_key' ? 'openai_api' : 'chatgpt_web';
+    }
+    if (account.provider === 'copilot') {
+      return 'copilot';
+    }
+    return account.provider;
   }
 
   async deleteAccountById(accountId: string): Promise<boolean> {
@@ -749,11 +888,63 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
   }
 
   getAllCollectedModels(): Set<string> {
-    return this.modelPolicy.getAllCollectedModels();
+    const models = this.modelPolicy.getAllCollectedModels();
+    this.mergeDiscoveredProviderModels(models);
+    return models;
   }
 
   getAllRawQuotaModels(): Set<string> {
     return this.modelPolicy.getAllRawQuotaModels();
+  }
+
+  /**
+   * Merges dynamically discovered provider models (Anthropic / OpenAI / Copilot) into
+   * the collected catalog so clients can select them even when no Google quota advertises them.
+   */
+  private mergeDiscoveredProviderModels(target: Set<string>): void {
+    for (const models of this.discoveredProviderModels.values()) {
+      for (const model of models) {
+        target.add(model);
+      }
+    }
+  }
+
+  /**
+   * Refreshes the dynamically discovered model catalog for all connected non-Google accounts.
+   * Called after accounts are (re)loaded and on a slow background interval.
+   */
+  async refreshDiscoveredProviderModels(): Promise<void> {
+    if (!this.providerModelDiscovery) return;
+    const nonGoogle = Array.from(this.allAccounts.values()).filter(
+      (acc) => acc.provider && acc.provider !== 'google',
+    );
+    if (nonGoogle.length === 0) {
+      this.discoveredProviderModels.clear();
+      this.discoveredProviderUsage.clear();
+      return;
+    }
+    try {
+      this.discoveredProviderModels =
+        await this.providerModelDiscovery.discoverProviderModels(nonGoogle);
+
+      const usagePromises = nonGoogle.map(async (account) => {
+        try {
+          const usage = await this.providerModelDiscovery!.discoverProviderUsage(account);
+          this.discoveredProviderUsage.set(account.id, usage);
+        } catch (err) {
+          this.logger.warn(
+            `Provider usage discovery failed for ${account.provider} account ${account.id}: ${(err as Error).message}`,
+          );
+        }
+      });
+      await Promise.all(usagePromises);
+    } catch (err) {
+      this.logger.warn(`Provider model discovery failed: ${(err as Error).message}`);
+    }
+  }
+
+  getProviderUsageForAccount(accountId: string): ProviderUsageInfo | undefined {
+    return this.discoveredProviderUsage.get(accountId);
   }
 
   private getAvailableModelsFromToken(tokenData: TokenData): Set<string> {

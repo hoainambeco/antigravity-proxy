@@ -3,18 +3,21 @@ import { Sidebar, type TabType } from './components/Sidebar';
 import { Header } from './components/Header';
 import { DashboardView } from './views/DashboardView';
 import { AccountsView } from './views/AccountsView';
+import { RoutingView } from './views/RoutingView';
 import { ModelsView } from './views/ModelsView';
 import { ApiKeysView } from './views/ApiKeysView';
 import { AuditLogsView } from './views/AuditLogsView';
 import { LoginView } from './views/LoginView';
 import { api } from './api/client';
 import { useTranslation } from './i18n';
+import { useToast } from './components/Toast';
 import type { Account, ApiKeyItem, AuditRecord, ModelEntry, SystemStatus } from './types';
 
 const ADMIN_KEY_STORAGE = 'antigravity_admin_key';
 
 export function App() {
   const { t } = useTranslation();
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [adminKey, setAdminKey] = useState<string | null>(
     () => localStorage.getItem(ADMIN_KEY_STORAGE),
@@ -69,7 +72,7 @@ export function App() {
       await api.syncAccounts();
       await loadData();
     } catch (err: any) {
-      alert(t('accounts.syncFailed', { message: err.message }));
+      toast.error(t('accounts.syncFailed', { message: err.message }));
     } finally {
       setIsSyncing(false);
     }
@@ -83,6 +86,10 @@ export function App() {
     accounts: {
       title: t('tabs.accounts.title'),
       subtitle: t('tabs.accounts.subtitle'),
+    },
+    routing: {
+      title: t('tabs.routing.title'),
+      subtitle: t('tabs.routing.subtitle'),
     },
     models: {
       title: t('tabs.models.title'),
@@ -128,6 +135,7 @@ export function App() {
                 />
               )}
               {activeTab === 'accounts' && <AccountsView accounts={accounts} onReload={loadData} />}
+              {activeTab === 'routing' && <RoutingView />}
               {activeTab === 'models' && <ModelsView models={models} proxyPort={status?.port} />}
               {activeTab === 'api-keys' && (
                 <ApiKeysView apiKeys={apiKeys} accounts={accounts} onReload={loadData} />

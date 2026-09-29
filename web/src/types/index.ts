@@ -32,6 +32,7 @@ export interface Account {
   id: string;
   email: string;
   provider: string;
+  auth_type?: string;
   project_id?: string;
   created_at: number;
   last_used: number;
@@ -42,6 +43,29 @@ export interface Account {
     models?: Record<string, ModelQuotaInfo>;
     subscription_tier?: string;
   };
+  provider_models?: string[];
+  provider_usage?: {
+    plan?: string;
+    usages: Array<{
+      label: string;
+      percentage: number;
+      used?: number;
+      limit?: number;
+      resetAt?: string;
+    }>;
+    unavailable?: string;
+  };
+}
+
+export interface RoutingRule {
+  pattern: string;
+  pipeline: string[];
+  description?: string;
+}
+
+export interface RoutingConfig {
+  rules: RoutingRule[];
+  default_pipeline: string[];
 }
 
 export interface ApiKeyItem {

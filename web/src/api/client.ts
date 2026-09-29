@@ -4,6 +4,7 @@ import type {
   AuditRecord,
   AuthValidateResult,
   ModelEntry,
+  RoutingConfig,
   SystemStatus,
 } from '../types';
 
@@ -68,6 +69,91 @@ export const api = {
         ? `/internal/accounts/oauth/url?redirect_uri=${encodeURIComponent(customRedirectUri)}`
         : '/internal/accounts/oauth/url',
     ),
+
+  addAccount: (data: any) =>
+    fetchJson<{ success: boolean; message: string }>('/internal/accounts', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  initClaudeOAuth: (redirectUri?: string) =>
+    fetchJson<{ authUrl: string; codeVerifier: string; state: string; redirectUri: string }>(
+      redirectUri
+        ? `/internal/accounts/oauth/claude/init?redirect_uri=${encodeURIComponent(redirectUri)}`
+        : '/internal/accounts/oauth/claude/init',
+    ),
+
+  exchangeClaudeOAuth: (data: {
+    code: string;
+    codeVerifier: string;
+    redirectUri: string;
+    state?: string;
+    email?: string;
+  }) =>
+    fetchJson<{ success: boolean; account: any }>(
+      '/internal/accounts/oauth/claude/exchange',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      },
+    ),
+
+  initOpenAIOAuth: (redirectUri?: string) =>
+    fetchJson<{ authUrl: string; codeVerifier: string; state: string; redirectUri: string }>(
+      redirectUri
+        ? `/internal/accounts/oauth/openai/init?redirect_uri=${encodeURIComponent(redirectUri)}`
+        : '/internal/accounts/oauth/openai/init',
+    ),
+
+  exchangeOpenAIOAuth: (data: {
+    code: string;
+    codeVerifier: string;
+    redirectUri: string;
+    email?: string;
+  }) =>
+    fetchJson<{ success: boolean; account: any }>(
+      '/internal/accounts/oauth/openai/exchange',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      },
+    ),
+
+  startCopilotDeviceFlow: () =>
+    fetchJson<{
+      device_code: string;
+      user_code: string;
+      verification_uri: string;
+      expires_in: number;
+      interval: number;
+    }>('/internal/accounts/copilot/device/code', {
+      method: 'POST',
+    }),
+
+  pollCopilotDeviceCode: (data: { device_code: string; email?: string }) =>
+    fetchJson<{
+      status: 'success' | 'pending' | 'error' | 'slow_down';
+      account?: any;
+      message?: string;
+      retryIntervalSeconds?: number;
+    }>(
+      '/internal/accounts/copilot/device/poll',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      },
+    ),
+
+  getRoutingConfig: async () => {
+    const res = await fetchJson<{ success: boolean; data: RoutingConfig }>('/internal/routing');
+    return res.data;
+  },
+
+  updateRoutingConfig: (data: RoutingConfig) =>
+    fetchJson<{ success: boolean; message: string; data: RoutingConfig }>('/internal/routing', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 
   getModels: async () => {
     const res = await fetchJson<{ data: ModelEntry[] }>('/v1/models');

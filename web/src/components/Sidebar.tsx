@@ -7,10 +7,11 @@ import {
   Activity,
   Layers,
   Sparkles,
+  Route,
 } from 'lucide-react';
 import { useTranslation } from '../i18n';
 
-export type TabType = 'dashboard' | 'accounts' | 'models' | 'api-keys' | 'audit';
+export type TabType = 'dashboard' | 'accounts' | 'routing' | 'models' | 'api-keys' | 'audit';
 
 interface SidebarProps {
   activeTab: TabType;
@@ -24,6 +25,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, statu
   const navItems = [
     { id: 'dashboard' as TabType, label: t('navigation.dashboard'), icon: LayoutDashboard },
     { id: 'accounts' as TabType, label: t('navigation.accounts'), icon: Users },
+    { id: 'routing' as TabType, label: t('navigation.routing') || 'Routing Rules', icon: Route },
     { id: 'models' as TabType, label: t('navigation.models'), icon: Cpu },
     { id: 'api-keys' as TabType, label: t('navigation.apiKeys'), icon: Key },
     { id: 'audit' as TabType, label: t('navigation.audit'), icon: Activity },

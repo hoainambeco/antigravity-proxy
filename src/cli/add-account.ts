@@ -37,6 +37,92 @@ async function startServer(): Promise<{ server: http.Server; port: number; redir
   throw new Error(tCli('addAccount.cannotOpenPort', { ports: ALLOWED_PORTS.join(', ') }));
 }
 
+async function handleNonGoogleAccount(provider: string, args: string[]) {
+  const getArg = (name: string): string | undefined => {
+    const idx = args.indexOf(name);
+    return idx !== -1 ? args[idx + 1] : undefined;
+  };
+
+  const email = getArg('--email') || `${provider}-${Date.now()}@antigravity.proxy`;
+  const key = getArg('--key');
+  const session = getArg('--session');
+  const token = getArg('--token');
+
+  let account: CloudAccount;
+  const id = `acc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+  if (provider === 'anthropic' || provider === 'claude') {
+    if (session) {
+      account = {
+        id,
+        provider: 'anthropic',
+        auth_type: 'web_session',
+        email,
+        session_key: session,
+        created_at: Date.now(),
+        last_used: Date.now(),
+        health: {},
+      };
+      console.log(`\nAdding Claude.ai Web Session account (${email})...`);
+    } else if (key) {
+      account = {
+        id,
+        provider: 'anthropic',
+        auth_type: 'api_key',
+        email,
+        api_key: key,
+        created_at: Date.now(),
+        last_used: Date.now(),
+        health: {},
+      };
+      console.log(`\nAdding Anthropic API Key account (${email})...`);
+    } else {
+      console.error('Error: Please provide --key <sk-ant-api03-...> or --session <sk-ant-sid01-...>');
+      process.exit(1);
+    }
+  } else if (provider === 'copilot') {
+    if (!token && !key) {
+      console.error('Error: Please provide GitHub Copilot token with --token <ghu_...>');
+      process.exit(1);
+    }
+    account = {
+      id,
+      provider: 'copilot',
+      auth_type: 'copilot_token',
+      email,
+      github_token: token || key,
+      created_at: Date.now(),
+      last_used: Date.now(),
+      health: {},
+    };
+    console.log(`\nAdding GitHub Copilot account (${email})...`);
+  } else if (provider === 'openai' || provider === 'codex') {
+    if (!key && !token) {
+      console.error('Error: Please provide OpenAI API key with --key <sk-...>');
+      process.exit(1);
+    }
+    account = {
+      id,
+      provider: 'openai',
+      auth_type: 'api_key',
+      email,
+      api_key: key || token,
+      created_at: Date.now(),
+      last_used: Date.now(),
+      health: {},
+    };
+    console.log(`\nAdding OpenAI API account (${email})...`);
+  } else {
+    console.error(`Unknown provider: ${provider}. Supported: google, anthropic, copilot, openai`);
+    process.exit(1);
+  }
+
+  await jsonAccountStoreInstance.upsertAccount(account);
+  console.log('Account saved successfully to accounts.json!');
+  const storedAccounts = await jsonAccountStoreInstance.getAccounts();
+  console.log(`Total accounts in pool: ${storedAccounts.length}\n`);
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const langIdx = args.indexOf('--lang');
@@ -50,6 +136,14 @@ async function main() {
   console.log('\n======================================================');
   console.log(tCli('addAccount.banner'));
   console.log('======================================================\n');
+
+  const providerIdx = args.indexOf('--provider');
+  const providerArg = providerIdx !== -1 ? args[providerIdx + 1]?.toLowerCase() : undefined;
+
+  if (providerArg && providerArg !== 'google') {
+    await handleNonGoogleAccount(providerArg, args);
+    return;
+  }
 
   let serverInfo: { server: http.Server; port: number; redirectUri: string };
   try {

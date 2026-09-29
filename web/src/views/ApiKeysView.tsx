@@ -3,6 +3,7 @@ import type { Account, ApiKeyItem } from '../types';
 import { api } from '../api/client';
 import { Key, Plus, Trash2, Shield, Users } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { useToast } from '../components/Toast';
 
 interface ApiKeysViewProps {
   apiKeys: ApiKeyItem[];
@@ -16,6 +17,7 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({
   onReload,
 }) => {
   const { t } = useTranslation();
+  const toast = useToast();
   const [showModal, setShowModal] = useState(false);
   const [newKeyName, setNewKeyName] = useState('');
   const [newKeyRole, setNewKeyRole] = useState<'client' | 'admin'>('client');
@@ -40,20 +42,26 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({
       setCreatedKeyData(res.data);
       onReload();
     } catch (err: any) {
-      alert(t('apiKeys.createFailed', { message: err.message }));
+      toast.error(t('apiKeys.createFailed', { message: err.message }));
     } finally {
       setCreating(false);
     }
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(t('apiKeys.confirmDelete', { name }))) return;
+    const confirmed = await toast.confirm(t('apiKeys.confirmDelete', { name }), {
+      title: t('common.confirmDeleteTitle'),
+      danger: true,
+      confirmLabel: t('common.delete'),
+      cancelLabel: t('common.cancel'),
+    });
+    if (!confirmed) return;
 
     try {
       await api.deleteApiKey(id);
       onReload();
     } catch (err: any) {
-      alert(t('apiKeys.deleteFailed', { message: err.message }));
+      toast.error(t('apiKeys.deleteFailed', { message: err.message }));
     }
   };
 
@@ -62,7 +70,7 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({
       await api.updateApiKey(key.id, { isActive: !key.isActive });
       onReload();
     } catch (err: any) {
-      alert(t('apiKeys.updateFailed', { message: err.message }));
+      toast.error(t('apiKeys.updateFailed', { message: err.message }));
     }
   };
 

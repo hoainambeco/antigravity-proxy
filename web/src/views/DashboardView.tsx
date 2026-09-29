@@ -171,6 +171,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               const majorKeys = Object.keys(models).filter((k) =>
                 ['gemini-3.7-flash-tiered', 'gemini-3.8-flash-tiered', 'claude-sonnet-4-6', 'gemini-2.5-pro'].includes(k),
               );
+              const providerModels = account.provider_models || [];
+              const providerUsage = account.provider_usage;
 
               return (
                 <div key={account.id} className="p-4 rounded-xl bg-zinc-900 border border-zinc-800/80">
@@ -181,6 +183,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       <span className="text-xs font-mono text-zinc-400 px-2 py-0.5 rounded bg-zinc-800">
                         {account.id}
                       </span>
+                      {account.provider !== 'google' && account.provider && (
+                        <span className="text-[11px] px-2 py-0.5 rounded font-medium bg-zinc-800 text-zinc-300 border border-zinc-700/60">
+                          {account.provider}
+                        </span>
+                      )}
                     </div>
                     {account.is_cooldown && (
                       <span className="text-xs px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
@@ -189,9 +196,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     )}
                   </div>
 
-                  {majorKeys.length === 0 ? (
-                    <p className="text-xs text-zinc-400">{t('dashboard.noQuotaData')}</p>
-                  ) : (
+                  {majorKeys.length > 0 ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                       {majorKeys.map((key) => {
                         const m = models[key];
@@ -221,6 +226,64 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         );
                       })}
                     </div>
+                  ) : providerUsage && providerUsage.usages.length > 0 ? (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <p className="text-[11px] text-zinc-400">{t('dashboard.providerUsageLabel')}</p>
+                        {providerUsage.plan && (
+                          <span className="text-[11px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700/60">
+                            {providerUsage.plan}
+                          </span>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {providerUsage.usages.map((u, i) => {
+                          const pct = u.percentage ?? 0;
+                          const colorClass =
+                            pct >= 80
+                              ? 'bg-rose-500'
+                              : pct >= 50
+                                ? 'bg-amber-500'
+                                : 'bg-emerald-500';
+                          return (
+                            <div key={i} className="bg-zinc-950 p-2.5 rounded-lg border border-zinc-800/60">
+                              <div className="flex items-center justify-between text-xs mb-1">
+                                <span className="text-zinc-400 truncate max-w-[140px]" title={u.label}>
+                                  {u.label}
+                                </span>
+                                <span className="font-mono font-bold text-zinc-200">
+                                  {u.limit != null && u.used != null ? `${u.used}/${u.limit}` : `${pct}%`}
+                                </span>
+                              </div>
+                              <div className="w-full bg-zinc-800 rounded-full h-1.5 overflow-hidden">
+                                <div
+                                  className={`h-1.5 rounded-full transition-all ${colorClass}`}
+                                  style={{ width: `${Math.max(2, Math.min(100, pct))}%` }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : providerUsage && providerUsage.unavailable ? (
+                    <p className="text-xs text-zinc-400">{providerUsage.unavailable}</p>
+                  ) : providerModels.length > 0 ? (
+                    <div>
+                      <p className="text-[11px] text-zinc-400 mb-2">{t('dashboard.providerModelsLabel')}</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {providerModels.map((m) => (
+                          <span
+                            key={m}
+                            className="text-xs px-2 py-1 rounded border font-mono font-medium bg-zinc-950 border-zinc-700/60 text-zinc-300"
+                          >
+                            {m}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-zinc-400">{t('dashboard.noQuotaData')}</p>
                   )}
                 </div>
               );
