@@ -125,8 +125,8 @@ export abstract class BaseProxyService {
     };
   }
 
-  protected createTokenRetryState(): ProxyTokenRetryState {
-    return this.retryPolicy.createTokenRetryState();
+  protected createTokenRetryState(allowedAccountIds?: string[] | null): ProxyTokenRetryState {
+    return this.retryPolicy.createTokenRetryState(allowedAccountIds);
   }
 
   protected async selectRetryToken(

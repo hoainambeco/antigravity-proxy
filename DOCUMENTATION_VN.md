@@ -76,8 +76,9 @@ Dự án cho phép bạn sử dụng các tài khoản **Google Cloud Code / Ant
 
 ### Các bước cài đặt
 ```bash
-# 1. Di chuyển vào thư mục dự án
-cd /home/hoainam/code/antigravity-proxy
+# 1. Clone và di chuyển vào thư mục dự án
+git clone https://github.com/hoainambeco/antigravity-proxy.git
+cd antigravity-proxy
 
 # 2. Cài đặt các gói phụ thuộc
 npm install

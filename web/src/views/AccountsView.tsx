@@ -2,15 +2,21 @@ import React, { useState } from 'react';
 import type { Account } from '../types';
 import { api } from '../api/client';
 import { Users, RefreshCw, Trash2, Plus, AlertCircle, CheckCircle2, ShieldAlert, Clock } from 'lucide-react';
+import { useTranslation } from '../i18n';
 
-function formatResetCountdown(resetTime: string): string {
+function formatResetCountdown(resetTime: string, resettingText: string, prefixTemplate: string): string {
   const diffMs = new Date(resetTime).getTime() - Date.now();
-  if (diffMs <= 0) return 'Đang reset';
+  if (diffMs <= 0) return resettingText;
   const diffMin = Math.floor(diffMs / 60000);
-  if (diffMin < 60) return `${diffMin}m`;
-  const hours = Math.floor(diffMin / 60);
-  const mins = diffMin % 60;
-  return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  let timeStr = '';
+  if (diffMin < 60) {
+    timeStr = `${diffMin}m`;
+  } else {
+    const hours = Math.floor(diffMin / 60);
+    const mins = diffMin % 60;
+    timeStr = mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  }
+  return prefixTemplate.replace('{time}', timeStr);
 }
 
 interface AccountsViewProps {
@@ -19,6 +25,7 @@ interface AccountsViewProps {
 }
 
 export const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onReload }) => {
+  const { t } = useTranslation();
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [oauthLoading, setOauthLoading] = useState(false);
@@ -30,14 +37,14 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onReload }
       await api.syncAccounts(id);
       onReload();
     } catch (err: any) {
-      alert(`Sync failed: ${err.message}`);
+      alert(t('accounts.syncFailed', { message: err.message }));
     } finally {
       setSyncingId(null);
     }
   };
 
   const handleDeleteAccount = async (id: string, email: string) => {
-    if (!confirm(`Bạn có chắc muốn xóa tài khoản [${email}] không?`)) {
+    if (!confirm(t('accounts.confirmDelete', { email }))) {
       return;
     }
 
@@ -46,7 +53,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onReload }
       await api.deleteAccount(id);
       onReload();
     } catch (err: any) {
-      alert(`Delete failed: ${err.message}`);
+      alert(t('accounts.deleteFailed', { message: err.message }));
     } finally {
       setDeletingId(null);
     }
@@ -69,7 +76,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onReload }
         }
       }
     } catch (err: any) {
-      alert(`Không tạo được link OAuth: ${err.message}`);
+      alert(t('accounts.oauthError', { message: err.message }));
     } finally {
       setOauthLoading(false);
     }
@@ -82,10 +89,10 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onReload }
         <div>
           <h2 className="text-lg font-bold text-zinc-100 flex items-center gap-2">
             <Users className="w-5 h-5 text-emerald-400" />
-            Tài khoản Google Cloud ({accounts.length})
+            {t('accounts.titleWithCount', { count: accounts.length })}
           </h2>
           <p className="text-xs text-zinc-400">
-            Hệ thống tự động xoay vòng tài khoản và chuyển tài khoản khi gặp giới hạn tốc độ (Rate Limit 429).
+            {t('accounts.description')}
           </p>
         </div>
 
@@ -95,15 +102,15 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onReload }
           className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-zinc-950 rounded-xl font-semibold text-sm transition-all shadow-lg shadow-emerald-500/20"
         >
           <Plus className="w-4 h-4" />
-          <span>{oauthLoading ? 'Đang mở OAuth...' : 'Thêm tài khoản Google'}</span>
+          <span>{oauthLoading ? t('accounts.openingOAuth') : t('accounts.addAccountBtn')}</span>
         </button>
       </div>
 
       {oauthUrl && (
         <div className="p-4 rounded-xl bg-zinc-900 border border-emerald-500/30 text-xs text-zinc-300 flex items-center justify-between">
           <div className="space-y-1">
-            <p className="font-semibold text-emerald-400">Tab đăng nhập Google đã được mở!</p>
-            <p className="text-zinc-400">Nếu trình duyệt chặn popup, bạn có thể click trực tiếp vào link này:</p>
+            <p className="font-semibold text-emerald-400">{t('accounts.oauthOpenedTitle')}</p>
+            <p className="text-zinc-400">{t('accounts.oauthBlockedHint')}</p>
             <a href={oauthUrl} target="_blank" rel="noreferrer" className="text-teal-400 underline break-all font-mono">
               {oauthUrl}
             </a>
@@ -112,7 +119,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onReload }
             onClick={() => setOauthUrl(null)}
             className="px-3 py-1.5 rounded-lg bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
           >
-            Đóng
+            {t('common.close')}
           </button>
         </div>
       )}
@@ -121,9 +128,9 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onReload }
       {accounts.length === 0 ? (
         <div className="p-12 text-center rounded-2xl border border-zinc-800 bg-zinc-900/30">
           <AlertCircle className="w-10 h-10 text-zinc-500 mx-auto mb-3" />
-          <p className="text-sm text-zinc-300 font-medium">Chưa có tài khoản Google nào</p>
+          <p className="text-sm text-zinc-300 font-medium">{t('accounts.noAccountsYet')}</p>
           <p className="text-xs text-zinc-500 mt-1 max-w-sm mx-auto">
-            Thêm tài khoản qua nút "Thêm tài khoản Google" hoặc chạy lệnh <code className="text-emerald-400 font-mono">npm run add-account</code> trên terminal.
+            {t('accounts.noAccountsSubhint')}
           </p>
         </div>
       ) : (
@@ -151,9 +158,17 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onReload }
                         </span>
                       </div>
                       <div className="flex items-center gap-2 mt-1 text-xs text-zinc-400">
-                        <span>Project: <code className="text-zinc-300 font-mono">{account.project_id || 'N/A'}</code></span>
+                        <span>
+                          {t('accounts.projectLabel')}{' '}
+                          <code className="text-zinc-300 font-mono">{account.project_id || 'N/A'}</code>
+                        </span>
                         <span>•</span>
-                        <span>Tier: <span className="text-emerald-400 font-medium">{account.quota?.subscription_tier || 'Standard'}</span></span>
+                        <span>
+                          {t('accounts.tierLabel')}{' '}
+                          <span className="text-emerald-400 font-medium">
+                            {account.quota?.subscription_tier || 'Standard'}
+                          </span>
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -162,12 +177,12 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onReload }
                     {account.is_cooldown ? (
                       <span className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium">
                         <ShieldAlert className="w-3.5 h-3.5" />
-                        Cooldown ({account.cooldown_remaining_sec}s)
+                        {t('accounts.cooldownRemaining', { seconds: account.cooldown_remaining_sec ?? 0 })}
                       </span>
                     ) : (
                       <span className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
                         <CheckCircle2 className="w-3.5 h-3.5" />
-                        Active
+                        {t('common.active')}
                       </span>
                     )}
 
@@ -175,20 +190,20 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onReload }
                       onClick={() => handleSyncAccount(account.id)}
                       disabled={syncingId === account.id}
                       className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-all text-xs font-medium flex items-center gap-1.5 disabled:opacity-50"
-                      title="Sync Quota"
+                      title={t('common.syncQuota')}
                     >
                       <RefreshCw className={`w-3.5 h-3.5 ${syncingId === account.id ? 'animate-spin text-emerald-400' : ''}`} />
-                      <span className="hidden sm:inline">Sync</span>
+                      <span className="hidden sm:inline">{t('common.sync')}</span>
                     </button>
 
                     <button
                       onClick={() => handleDeleteAccount(account.id, account.email)}
                       disabled={deletingId === account.id}
                       className="p-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition-all text-xs flex items-center gap-1.5"
-                      title="Xóa tài khoản"
+                      title={t('common.delete')}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Xóa</span>
+                      <span className="hidden sm:inline">{t('common.delete')}</span>
                     </button>
                   </div>
                 </div>
@@ -196,10 +211,10 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onReload }
                 {/* Quota breakdown */}
                 <div>
                   <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2.5">
-                    Hạn mức Quota Models ({modelKeys.length} models)
+                    {t('accounts.modelQuotasTitle', { count: modelKeys.length })}
                   </h4>
                   {modelKeys.length === 0 ? (
-                    <p className="text-xs text-zinc-500 italic">Chưa có dữ liệu hạn mức. Bấm "Sync" để tải.</p>
+                    <p className="text-xs text-zinc-500 italic">{t('accounts.noQuotaSyncHint')}</p>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5">
                       {modelKeys.map((modelKey) => {
@@ -233,7 +248,13 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onReload }
                               {m?.resetTime && (
                                 <div className="flex items-center gap-1 text-[10px] text-zinc-500 mt-1">
                                   <Clock className="w-2.5 h-2.5" />
-                                  <span>Reset sau {formatResetCountdown(m.resetTime)}</span>
+                                  <span>
+                                    {formatResetCountdown(
+                                      m.resetTime,
+                                      t('accounts.resettingNow'),
+                                      t('accounts.resetCountdown', { time: '{time}' }),
+                                    )}
+                                  </span>
                                 </div>
                               )}
                             </div>

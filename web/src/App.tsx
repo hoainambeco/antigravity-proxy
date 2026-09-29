@@ -8,11 +8,13 @@ import { ApiKeysView } from './views/ApiKeysView';
 import { AuditLogsView } from './views/AuditLogsView';
 import { LoginView } from './views/LoginView';
 import { api } from './api/client';
+import { useTranslation } from './i18n';
 import type { Account, ApiKeyItem, AuditRecord, ModelEntry, SystemStatus } from './types';
 
 const ADMIN_KEY_STORAGE = 'antigravity_admin_key';
 
 export function App() {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [adminKey, setAdminKey] = useState<string | null>(
     () => localStorage.getItem(ADMIN_KEY_STORAGE),
@@ -53,8 +55,11 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    loadData();
-    const interval = setInterval(loadData, 10000); // Polling every 10 seconds
+    // oxlint-disable-next-line react/set-state-in-effect
+    void loadData();
+    const interval = setInterval(() => {
+      void loadData();
+    }, 10000); // Polling every 10 seconds
     return () => clearInterval(interval);
   }, [loadData]);
 
@@ -64,7 +69,7 @@ export function App() {
       await api.syncAccounts();
       await loadData();
     } catch (err: any) {
-      alert(`Sync failed: ${err.message}`);
+      alert(t('accounts.syncFailed', { message: err.message }));
     } finally {
       setIsSyncing(false);
     }
@@ -72,24 +77,24 @@ export function App() {
 
   const titles: Record<TabType, { title: string; subtitle: string }> = {
     dashboard: {
-      title: 'Tổng quan Hệ thống',
-      subtitle: 'Trạng thái hoạt động, hạn mức models và các thông số gateway',
+      title: t('tabs.dashboard.title'),
+      subtitle: t('tabs.dashboard.subtitle'),
     },
     accounts: {
-      title: 'Quản lý Tài khoản & Quota',
-      subtitle: 'Danh sách các tài khoản Google Cloud Code và tiến trình hạn mức theo thời gian thực',
+      title: t('tabs.accounts.title'),
+      subtitle: t('tabs.accounts.subtitle'),
     },
     models: {
-      title: 'Danh mục Models & Routing',
-      subtitle: 'Các models đang khả dụng được phục vụ cho Cursor, Claude Code, Cline và OpenAI SDK',
+      title: t('tabs.models.title'),
+      subtitle: t('tabs.models.subtitle'),
     },
     'api-keys': {
-      title: 'Quản lý Khóa API Key',
-      subtitle: 'Tạo, phân quyền và thu hồi API Key truy cập vào proxy gateway',
+      title: t('tabs.apiKeys.title'),
+      subtitle: t('tabs.apiKeys.subtitle'),
     },
     audit: {
-      title: 'Nhật ký Traffic & Lỗi',
-      subtitle: 'Lịch sử cuộc gọi, thời gian phản hồi, mã lỗi và token thống kê',
+      title: t('tabs.audit.title'),
+      subtitle: t('tabs.audit.subtitle'),
     },
   };
 
@@ -109,7 +114,7 @@ export function App() {
           {loading && !status ? (
             <div className="flex items-center justify-center h-64 text-zinc-500 text-sm">
               <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-emerald-500 mr-3" />
-              <span>Đang kết nối tới Gateway...</span>
+              <span>{t('common.loadingGateway')}</span>
             </div>
           ) : (
             <>
@@ -124,7 +129,9 @@ export function App() {
               )}
               {activeTab === 'accounts' && <AccountsView accounts={accounts} onReload={loadData} />}
               {activeTab === 'models' && <ModelsView models={models} proxyPort={status?.port} />}
-              {activeTab === 'api-keys' && <ApiKeysView apiKeys={apiKeys} onReload={loadData} />}
+              {activeTab === 'api-keys' && (
+                <ApiKeysView apiKeys={apiKeys} accounts={accounts} onReload={loadData} />
+              )}
               {activeTab === 'audit' && (
                 <AuditLogsView logs={auditLogs} onReload={loadData} isLoading={isSyncing} />
               )}

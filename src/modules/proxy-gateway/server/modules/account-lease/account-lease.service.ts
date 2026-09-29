@@ -47,9 +47,10 @@ import {
 } from './image-account-scheduler.service';
 import { getServerConfig } from '@/server/server-config';
 
-interface GetNextTokenOptions {
+export interface GetNextTokenOptions {
   sessionKey?: string;
   excludeAccountIds?: string[];
+  allowedAccountIds?: string[];
   model?: string;
 }
 
@@ -434,17 +435,45 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
       const sessionKey = options?.sessionKey?.trim();
       const model = options?.model;
       const excludedAccountIds = new Set(options?.excludeAccountIds ?? []);
+      const allowedAccountIds =
+        options?.allowedAccountIds && options.allowedAccountIds.length > 0
+          ? new Set(options.allowedAccountIds)
+          : null;
 
       this.rateLimitTracker.cleanupExpired();
 
       const fullAccountPool = Array.from(this.tokens.entries()).filter(
-        ([, tokenData]) =>
-          tokenData.validation_blocked_until_ms === undefined ||
-          now >= tokenData.validation_blocked_until_ms,
+        ([accountId, tokenData]) => {
+          if (
+            allowedAccountIds &&
+            !allowedAccountIds.has(accountId) &&
+            !allowedAccountIds.has(tokenData.email)
+          ) {
+            return false;
+          }
+          return (
+            tokenData.validation_blocked_until_ms === undefined ||
+            now >= tokenData.validation_blocked_until_ms
+          );
+        },
       );
+
+      if (allowedAccountIds && fullAccountPool.length === 0) {
+        this.logger.warn(
+          `No configured accounts match the allowed account list: ${Array.from(allowedAccountIds).join(', ')}`,
+        );
+        return null;
+      }
+
       const modelCapableAccountPool = this.selectModelCapableAccounts(fullAccountPool, model);
       if (modelCapableAccountPool.length === 0) {
-        this.logger.warn(`No account advertises requested model: ${model ?? 'unknown'}`);
+        if (allowedAccountIds) {
+          this.logger.warn(
+            `None of the allowed accounts (${Array.from(allowedAccountIds).join(', ')}) advertise requested model: ${model ?? 'unknown'}`,
+          );
+        } else {
+          this.logger.warn(`No account advertises requested model: ${model ?? 'unknown'}`);
+        }
         return null;
       }
 
@@ -521,6 +550,7 @@ export class AccountLeaseService implements OnModuleInit, OnModuleDestroy {
         const token = this.getNextToken({
           sessionKey: options.sessionKey,
           model: options.model,
+          allowedAccountIds: options.allowedAccountIds,
           excludeAccountIds: [...(options.excludeAccountIds ?? []), ...busyAccountIds],
         });
         const selected = await this.waitForImageSelection(token, remainingMs, options.signal);

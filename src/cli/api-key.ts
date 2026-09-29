@@ -1,19 +1,19 @@
 import "dotenv/config";
-import { randomBytes } from "node:crypto";
+import {
+  generateApiKey,
+  hashApiKey,
+  MIN_CUSTOM_KEY_LENGTH,
+  previewApiKey,
+} from "../modules/api-key/api-key-hash";
 import { ApiKey, ApiKeyRole } from "../modules/api-key/entities/api-key.entity";
 import { getStandaloneDataSource } from "../modules/database/database.config";
-
-function maskKey(key: string): string {
-  if (!key || key.length < 12) {
-    return "****";
-  }
-  return `${key.slice(0, 8)}...${key.slice(-4)}`;
-}
+import { tCli, getCliLanguage, setCliLanguage, type CliLanguage } from "./i18n";
 
 function formatDate(date: Date | string | null | undefined): string {
-  if (!date) return "Never";
+  if (!date) return getCliLanguage() === 'vi' ? 'Chưa dùng' : 'Never';
   const d = new Date(date);
-  return d.toLocaleString("vi-VN", {
+  const locale = getCliLanguage() === 'vi' ? 'vi-VN' : 'en-US';
+  return d.toLocaleString(locale, {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -23,28 +23,7 @@ function formatDate(date: Date | string | null | undefined): string {
 }
 
 function printUsage() {
-  console.log(`
-Antigravity Proxy - Quản lý API Key (SQLite)
-======================================================
-Sử dụng:
-  npm run api-key list                      - Liệt kê tất cả API Key
-  npm run api-key create <name> [options]   - Tạo một API Key mới
-  npm run api-key delete <id-or-name>       - Xóa một API Key
-  npm run api-key toggle <id-or-name>       - Bật/Tắt (Enable/Disable) API Key
-
-Options khi tạo key:
-  --role <client|admin>   (mặc định: client)
-  --key <custom_key>      (mặc định: tự sinh sk-ag-...)
-  --expires <YYYY-MM-DD>  (mặc định: không giới hạn)
-
-Ví dụ:
-  npm run api-key create "Cursor - Nam"
-  npm run api-key create "Admin Dashboard" --role admin
-  npm run api-key list
-  npm run api-key toggle "Cursor - Nam"
-  npm run api-key delete 1a2b3c4d
-======================================================
-`);
+  console.log(tCli('apiKey.usage'));
 }
 
 async function listKeys() {
@@ -52,28 +31,33 @@ async function listKeys() {
   const repo = ds.getRepository(ApiKey);
   const keys = await repo.find({ order: { createdAt: "DESC" } });
 
-  console.log("\n=================== DANH SÁCH API KEY ===================");
+  console.log(tCli('apiKey.listHeader'));
   if (keys.length === 0) {
-    console.log("Hiện chưa có API Key nào trong SQLite database.");
-    console.log('Chạy: npm run api-key create "<name>" để tạo key mới.');
+    console.log(tCli('apiKey.noKeys'));
   } else {
     const tableData = keys.map((k) => {
       let status = k.isActive ? "✅ Active" : "⏸️ Disabled";
       if (k.expiresAt && new Date() > new Date(k.expiresAt)) {
         status = "❌ Expired";
       }
+      const accountsStr =
+        k.allowedAccountIds && k.allowedAccountIds.length > 0
+          ? k.allowedAccountIds.join(", ")
+          : tCli('apiKey.allAccounts');
+
       return {
         ID: k.id.slice(0, 8),
         Name: k.name,
         Role: k.role,
+        Accounts: accountsStr,
         Status: status,
-        Key: maskKey(k.key),
+        Key: k.keyPreview,
         "Last Used": formatDate(k.lastUsedAt),
         "Created At": formatDate(k.createdAt),
       };
     });
     console.table(tableData);
-    console.log(`Tổng cộng: ${keys.length} key(s)`);
+    console.log(tCli('apiKey.totalKeys', { count: keys.length }));
   }
   console.log("=========================================================\n");
 }
@@ -81,8 +65,7 @@ async function listKeys() {
 async function createKey(args: string[]) {
   const nameArg = args.find((a) => !a.startsWith("--"));
   if (!nameArg) {
-    console.error("❌ Lỗi: Vui lòng cung cấp tên định danh cho API Key.");
-    console.log('Ví dụ: npm run api-key create "Cursor của Nam"');
+    console.error(tCli('apiKey.provideNameError'));
     process.exit(1);
   }
 
@@ -93,7 +76,7 @@ async function createKey(args: string[]) {
     if (val === "admin" || val === "client") {
       role = val;
     } else {
-      console.warn(`⚠️ Role '${val}' không hợp lệ, dùng mặc định 'client'`);
+      console.warn(tCli('apiKey.invalidRoleWarn', { val }));
     }
   }
 
@@ -110,28 +93,49 @@ async function createKey(args: string[]) {
     if (!isNaN(parsed.getTime())) {
       expiresAt = parsed;
     } else {
-      console.warn(`⚠️ Ngày hết hạn không hợp lệ, bỏ qua ngày hết hạn.`);
+      console.warn(tCli('apiKey.invalidExpiresWarn'));
+    }
+  }
+
+  let allowedAccountIds: string[] | null = null;
+  const accIdx = args.indexOf("--accounts");
+  if (accIdx !== -1 && args[accIdx + 1]) {
+    const list = args[accIdx + 1]
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (list.length > 0) {
+      allowedAccountIds = list;
     }
   }
 
   const ds = await getStandaloneDataSource();
   const repo = ds.getRepository(ApiKey);
 
-  const keyValue = customKey || `sk-ag-${randomBytes(24).toString("hex")}`;
-
-  const existing = await repo.findOne({ where: { key: keyValue } });
-  if (existing) {
+  if (customKey && customKey.length < MIN_CUSTOM_KEY_LENGTH) {
     console.error(
-      `❌ Lỗi: Key này đã tồn tại trong database (ID: ${existing.id}).`,
+      tCli('apiKey.customKeyTooShortError', { min: MIN_CUSTOM_KEY_LENGTH }),
     );
+    process.exit(1);
+  }
+
+  const keyValue = customKey || generateApiKey();
+
+  const existing = await repo.findOne({
+    where: { keyHash: hashApiKey(keyValue) },
+  });
+  if (existing) {
+    console.error(tCli('apiKey.keyExistsError', { id: existing.id }));
     process.exit(1);
   }
 
   const newKey = repo.create({
     name: nameArg.trim(),
-    key: keyValue,
+    keyHash: hashApiKey(keyValue),
+    keyPreview: previewApiKey(keyValue),
     role,
     isActive: true,
+    allowedAccountIds,
     expiresAt,
     lastUsedAt: null,
   });
@@ -139,21 +143,27 @@ async function createKey(args: string[]) {
   const saved = await repo.save(newKey);
 
   console.log("\n======================================================");
-  console.log("🎉 TẠO API KEY THÀNH CÔNG!");
+  console.log(tCli('apiKey.createSuccessBanner'));
   console.log("======================================================");
-  console.log(`🆔 ID:          ${saved.id}`);
-  console.log(`📛 Name:        ${saved.name}`);
-  console.log(`🛡️  Role:        ${saved.role}`);
-  console.log(`🔑 API Key:     ${saved.key}`);
+  console.log(tCli('apiKey.labelId', { id: saved.id }));
+  console.log(tCli('apiKey.labelName', { name: saved.name }));
+  console.log(tCli('apiKey.labelRole', { role: saved.role }));
+  console.log(
+    tCli('apiKey.labelAccounts', {
+      accounts:
+        saved.allowedAccountIds && saved.allowedAccountIds.length > 0
+          ? saved.allowedAccountIds.join(", ")
+          : tCli('apiKey.allAccounts'),
+    }),
+  );
+  console.log(tCli('apiKey.labelKey', { key: keyValue }));
   if (saved.expiresAt) {
-    console.log(`⏳ Hết hạn:     ${formatDate(saved.expiresAt)}`);
+    console.log(tCli('apiKey.labelExpires', { date: formatDate(saved.expiresAt) }));
   }
   console.log("------------------------------------------------------");
-  console.log("⚠️  LƯU Ý QUAN TRỌNG:");
-  console.log("  Hãy copy và lưu trữ API Key trên ngay bây giờ.");
-  console.log(
-    "  Vì lý do bảo mật, lệnh list sẽ chỉ hiển thị key dưới dạng che bớt!",
-  );
+  console.log(tCli('apiKey.importantNotice'));
+  console.log(tCli('apiKey.copyNowNotice'));
+  console.log(tCli('apiKey.maskNotice'));
   console.log("======================================================\n");
 }
 
@@ -166,8 +176,8 @@ async function findKeyByQuery(query: string): Promise<ApiKey | null> {
   let key = await repo.findOne({ where: { id: trimmed } });
   if (key) return key;
 
-  // Try exact key
-  key = await repo.findOne({ where: { key: trimmed } });
+  // Try the key itself: only its digest is stored, so hash the query to look it up.
+  key = await repo.findOne({ where: { keyHash: hashApiKey(trimmed) } });
   if (key) return key;
 
   // Try exact name
@@ -190,7 +200,7 @@ async function findKeyByQuery(query: string): Promise<ApiKey | null> {
 
 async function deleteKey(query: string) {
   if (!query) {
-    console.error("❌ Lỗi: Vui lòng cung cấp ID hoặc tên của API Key cần xóa.");
+    console.error(tCli('apiKey.deleteProvideIdError'));
     process.exit(1);
   }
 
@@ -199,21 +209,25 @@ async function deleteKey(query: string) {
   const target = await findKeyByQuery(query);
 
   if (!target) {
-    console.error(`❌ Không tìm thấy API Key nào khớp với: "${query}"`);
+    console.error(tCli('apiKey.notFoundError', { query }));
     process.exit(1);
   }
 
   await repo.delete(target.id);
   console.log(
-    `\n🗑️  Đã xóa API Key: [${target.name}] (ID: ${target.id.slice(0, 8)}, Key: ${maskKey(target.key)})\n`,
+    `\n` +
+      tCli('apiKey.deletedSuccess', {
+        name: target.name,
+        id: target.id.slice(0, 8),
+        key: target.keyPreview,
+      }) +
+      `\n`,
   );
 }
 
 async function toggleKey(query: string) {
   if (!query) {
-    console.error(
-      "❌ Lỗi: Vui lòng cung cấp ID hoặc tên của API Key cần bật/tắt.",
-    );
+    console.error(tCli('apiKey.toggleProvideIdError'));
     process.exit(1);
   }
 
@@ -222,7 +236,7 @@ async function toggleKey(query: string) {
   const target = await findKeyByQuery(query);
 
   if (!target) {
-    console.error(`❌ Không tìm thấy API Key nào khớp với: "${query}"`);
+    console.error(tCli('apiKey.notFoundError', { query }));
     process.exit(1);
   }
 
@@ -230,13 +244,24 @@ async function toggleKey(query: string) {
   await repo.save(target);
 
   const statusStr = target.isActive
-    ? "✅ ĐÃ BẬT (Active)"
-    : "⏸️ ĐÃ TẮT (Disabled)";
-  console.log(`\n🔄 Trạng thái API Key [${target.name}]: ${statusStr}\n`);
+    ? tCli('apiKey.statusEnabled')
+    : tCli('apiKey.statusDisabled');
+  console.log(`\n` + tCli('apiKey.toggleStatus', { name: target.name, status: statusStr }) + `\n`);
 }
 
 async function main() {
-  const args = process.argv.slice(2);
+  let args = process.argv.slice(2);
+
+  // Check for --lang
+  const langIdx = args.indexOf('--lang');
+  if (langIdx !== -1 && args[langIdx + 1]) {
+    const l = args[langIdx + 1].toLowerCase() as CliLanguage;
+    if (l === 'en' || l === 'vi') {
+      setCliLanguage(l);
+    }
+    args = args.filter((_, i) => i !== langIdx && i !== langIdx + 1);
+  }
+
   const command = args[0]?.toLowerCase();
 
   try {
@@ -268,7 +293,7 @@ async function main() {
         break;
     }
   } catch (err) {
-    console.error("❌ Lỗi thực thi:", err);
+    console.error(tCli('apiKey.execError'), err);
     process.exit(1);
   } finally {
     const ds = await getStandaloneDataSource();

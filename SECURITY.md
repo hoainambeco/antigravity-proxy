@@ -1,21 +1,68 @@
 # Security Policy
 
-## Supported Versions
+## Scope
 
-Use this section to tell people about which versions of your project are
-currently being supported with security updates.
+This project is a self-hosted proxy. The secrets it keeps on the machine that runs it are
+worth far more than the code:
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 5.1.x   | :white_check_mark: |
-| 5.0.x   | :x:                |
-| 4.0.x   | :white_check_mark: |
-| < 4.0   | :x:                |
+| File | Contents | Consequence if leaked |
+| --- | --- | --- |
+| `accounts.json` | Google OAuth refresh tokens, one per linked account | Full, renewable access to those Google accounts' Antigravity quota |
+| `.env` | `ANTIGRAVITY_OAUTH_CLIENT_ID` / `_SECRET`, `PROXY_API_KEY` | Credential pair revoked once reported; master key grants admin API access |
+| `data/antigravity.sqlite` | Client API key hashes, traffic audit logs | Audit rows contain full prompts and responses; the key hashes are not usable as credentials |
 
-## Reporting a Vulnerability
+All three are listed in `.gitignore` and `.dockerignore`. Never commit them, never paste
+them into an issue, and never attach a database file to a bug report without deleting the
+`traffic_logs` table first.
 
-Use this section to tell people how to report a vulnerability.
+## Client API keys
 
-Tell them where to go, how often they can expect to get an update on a
-reported vulnerability, what to expect if the vulnerability is accepted or
-declined, etc.
+Only the SHA-256 digest of a client API key is stored. A key is shown once, when it is
+created, and cannot be recovered afterwards from the web UI, the CLI, or the database --
+if one is lost, delete it and create a replacement. The master key in `PROXY_API_KEY` is
+the exception: it lives in `.env` in the clear, because the proxy has to present it to
+itself, and it is compared in constant time.
+
+## Supported versions
+
+Only the latest commit on `master` receives fixes. There are no maintained release
+branches — pull `master` and rebuild.
+
+## Reporting a vulnerability
+
+Report privately, **not** as a public GitHub issue:
+
+- Open a [GitHub Security Advisory](https://github.com/hoainambeco/antigravity-proxy/security/advisories/new), or
+- Message the maintainer through GitHub ([@hoainambeco](https://github.com/hoainambeco)).
+
+Please include the affected version or commit, a description of the impact, and the
+minimum steps to reproduce. Redact any real token, API key, or account email from your
+report.
+
+Expect an acknowledgement within roughly a week. This is a spare-time project with no
+paid maintainer, no SLA, and no bug bounty. If a report is accepted, the fix lands on
+`master` and the advisory is published; if it is declined, you will be told why.
+
+## Known weaknesses, accepted by design
+
+These are documented rather than fixed, because the project assumes a trusted,
+single-operator deployment. Treat them as reasons not to expose the proxy to the public
+internet, not as vulnerabilities to report:
+
+- **Open Mode.** With no `PROXY_API_KEY` and no keys in the database, the proxy accepts
+  every request unauthenticated. It binds to `127.0.0.1` in that state, but an explicit
+  `HOST=0.0.0.0` overrides that protection. See "Exposing the proxy" in the README.
+- **No rate limiting.** Nothing throttles API key guesses or request volume. This is
+  deliberate: the proxy fronts long-running agent sessions, where a throttle interrupts
+  real work more often than it stops an attacker.
+- **Permissive CORS.** The server calls `enableCors()` with no allowlist, so any origin
+  may call it from a browser. Also deliberate: an allowlist breaks browser-based and
+  editor-embedded agents that call the proxy from origins the operator cannot enumerate.
+- **Audit logs retain request and response bodies in full**, including prompts.
+
+## Not a vulnerability
+
+Reports that the proxy uses Google-internal OAuth scopes, or that it works with
+credentials extracted from the Antigravity desktop application, describe what the project
+openly is — see the disclaimer in the README. That is a terms-of-service question for
+each operator, not a security defect.

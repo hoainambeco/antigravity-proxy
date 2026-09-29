@@ -1,22 +1,29 @@
 import React, { useState } from 'react';
-import type { ApiKeyItem } from '../types';
+import type { Account, ApiKeyItem } from '../types';
 import { api } from '../api/client';
-import { Key, Plus, Trash2, Copy, Check, Shield, Eye, EyeOff } from 'lucide-react';
+import { Key, Plus, Trash2, Shield, Users } from 'lucide-react';
+import { useTranslation } from '../i18n';
 
 interface ApiKeysViewProps {
   apiKeys: ApiKeyItem[];
+  accounts?: Account[];
   onReload: () => void;
 }
 
-export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onReload }) => {
+export const ApiKeysView: React.FC<ApiKeysViewProps> = ({
+  apiKeys,
+  accounts = [],
+  onReload,
+}) => {
+  const { t } = useTranslation();
   const [showModal, setShowModal] = useState(false);
   const [newKeyName, setNewKeyName] = useState('');
   const [newKeyRole, setNewKeyRole] = useState<'client' | 'admin'>('client');
+  const [useAllAccounts, setUseAllAccounts] = useState(true);
+  const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
   const [createdKeyData, setCreatedKeyData] = useState<any>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [revealedKey, setRevealedKey] = useState<string | null>(null);
-  const [revealingId, setRevealingId] = useState<string | null>(null);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,27 +31,29 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onReload }) =
 
     try {
       setCreating(true);
+      const allowed = useAllAccounts ? null : selectedAccountIds;
       const res = await api.createApiKey({
         name: newKeyName.trim(),
         role: newKeyRole,
+        allowedAccountIds: allowed && allowed.length > 0 ? allowed : null,
       });
       setCreatedKeyData(res.data);
       onReload();
     } catch (err: any) {
-      alert(`Tạo key thất bại: ${err.message}`);
+      alert(t('apiKeys.createFailed', { message: err.message }));
     } finally {
       setCreating(false);
     }
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Bạn có chắc muốn xóa API Key [${name}] không?`)) return;
+    if (!confirm(t('apiKeys.confirmDelete', { name }))) return;
 
     try {
       await api.deleteApiKey(id);
       onReload();
     } catch (err: any) {
-      alert(`Xóa key thất bại: ${err.message}`);
+      alert(t('apiKeys.deleteFailed', { message: err.message }));
     }
   };
 
@@ -53,7 +62,7 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onReload }) =
       await api.updateApiKey(key.id, { isActive: !key.isActive });
       onReload();
     } catch (err: any) {
-      alert(`Cập nhật thất bại: ${err.message}`);
+      alert(t('apiKeys.updateFailed', { message: err.message }));
     }
   };
 
@@ -63,40 +72,12 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onReload }) =
     setTimeout(() => setCopiedKey(null), 1500);
   };
 
-  const handleCopyFullKey = async (id: string) => {
-    try {
-      setRevealingId(id);
-      const raw = await api.getRawApiKey(id);
-      await navigator.clipboard.writeText(raw);
-      setCopiedKey(raw);
-      setTimeout(() => setCopiedKey(null), 1500);
-    } catch (err: any) {
-      alert(`Không lấy được key đầy đủ: ${err.message}`);
-    } finally {
-      setRevealingId(null);
-    }
-  };
-
-  const handleReveal = async (id: string) => {
-    if (revealedKey) {
-      setRevealedKey(null);
-      return;
-    }
-    try {
-      setRevealingId(id);
-      const raw = await api.getRawApiKey(id);
-      setRevealedKey(raw);
-    } catch (err: any) {
-      alert(`Không lấy được key đầy đủ: ${err.message}`);
-    } finally {
-      setRevealingId(null);
-    }
-  };
-
   const closeModal = () => {
     setShowModal(false);
     setCreatedKeyData(null);
     setNewKeyName('');
+    setUseAllAccounts(true);
+    setSelectedAccountIds([]);
   };
 
   return (
@@ -106,19 +87,23 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onReload }) =
         <div>
           <h2 className="text-lg font-bold text-zinc-100 flex items-center gap-2">
             <Key className="w-5 h-5 text-amber-400" />
-            Quản lý API Keys ({apiKeys.length})
+            {t('apiKeys.titleWithCount', { count: apiKeys.length })}
           </h2>
           <p className="text-xs text-zinc-400">
-            Tạo và cấp phát API Key cho từng máy tính hoặc từng tool (Cursor, Claude Code, Cline, Aider) sử dụng proxy.
+            {t('apiKeys.description')}
           </p>
         </div>
 
         <button
-          onClick={() => setShowModal(true)}
+          onClick={() => {
+            setUseAllAccounts(true);
+            setSelectedAccountIds([]);
+            setShowModal(true);
+          }}
           className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-zinc-950 rounded-xl font-semibold text-sm transition-all shadow-lg shadow-emerald-500/20"
         >
           <Plus className="w-4 h-4" />
-          <span>Tạo API Key mới</span>
+          <span>{t('apiKeys.createBtn')}</span>
         </button>
       </div>
 
@@ -126,19 +111,20 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onReload }) =
       <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 overflow-hidden">
         {apiKeys.length === 0 ? (
           <div className="p-12 text-center text-zinc-500 text-sm">
-            Chưa có API Key nào. Bấm "Tạo API Key mới" để tạo khóa truy cập.
+            {t('apiKeys.noKeysYet')}
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-zinc-900/80 border-b border-zinc-800 text-zinc-400 font-medium uppercase tracking-wider">
                 <tr>
-                  <th className="py-3 px-4">Tên</th>
-                  <th className="py-3 px-4">API Key</th>
-                  <th className="py-3 px-4">Vai trò</th>
-                  <th className="py-3 px-4">Trạng thái</th>
-                  <th className="py-3 px-4">Sử dụng gần nhất</th>
-                  <th className="py-3 px-4 text-right">Thao tác</th>
+                  <th className="py-3 px-4">{t('apiKeys.table.name')}</th>
+                  <th className="py-3 px-4">{t('apiKeys.table.apiKey')}</th>
+                  <th className="py-3 px-4">{t('apiKeys.table.role')}</th>
+                  <th className="py-3 px-4">{t('apiKeys.table.accounts')}</th>
+                  <th className="py-3 px-4">{t('apiKeys.table.status')}</th>
+                  <th className="py-3 px-4">{t('apiKeys.table.lastUsed')}</th>
+                  <th className="py-3 px-4 text-right">{t('apiKeys.table.actions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/60">
@@ -146,33 +132,9 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onReload }) =
                   <tr key={k.id} className="hover:bg-zinc-900/50 transition-colors">
                     <td className="py-3.5 px-4 font-semibold text-zinc-200">{k.name}</td>
                     <td className="py-3.5 px-4 font-mono text-zinc-400">
-                      <div className="flex items-center gap-2">
-                        {revealedKey ? (
-                          <span className="text-emerald-300 text-[11px] break-all max-w-[220px]">{revealedKey}</span>
-                        ) : (
-                          <span>{k.key}</span>
-                        )}
-                        <button
-                          onClick={() => handleReveal(k.id)}
-                          disabled={revealingId === k.id}
-                          className="p-1 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300"
-                          title={revealedKey ? 'Ẩn key' : 'Xem key đầy đủ'}
-                        >
-                          {revealedKey ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                        </button>
-                        <button
-                          onClick={() => handleCopyFullKey(k.id)}
-                          disabled={revealingId === k.id}
-                          className="p-1 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300"
-                          title="Copy key đầy đủ"
-                        >
-                          {copiedKey ? (
-                            <Check className="w-3 h-3 text-emerald-400" />
-                          ) : (
-                            <Copy className="w-3 h-3" />
-                          )}
-                        </button>
-                      </div>
+                      {/* Only a hash of the key is stored, so there is nothing to reveal
+                          or copy here -- the full value is shown once, at creation. */}
+                      <span title={t('apiKeys.hashedKeyHint')}>{k.key}</span>
                     </td>
                     <td className="py-3.5 px-4">
                       <span
@@ -186,6 +148,30 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onReload }) =
                       </span>
                     </td>
                     <td className="py-3.5 px-4">
+                      {!k.allowedAccountIds || k.allowedAccountIds.length === 0 ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 text-[11px] font-medium">
+                          <Users className="w-3 h-3 text-emerald-400" />
+                          <span>{t('apiKeys.table.allAccounts')}</span>
+                        </span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1 max-w-[220px]">
+                          {k.allowedAccountIds.map((accId) => {
+                            const found = accounts.find((a) => a.id === accId || a.email === accId);
+                            const label = found ? found.email : accId;
+                            return (
+                              <span
+                                key={accId}
+                                className="px-1.5 py-0.5 rounded bg-teal-500/10 text-teal-300 border border-teal-500/20 text-[10px] font-mono truncate max-w-[150px]"
+                                title={label}
+                              >
+                                {label}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </td>
+                    <td className="py-3.5 px-4">
                       <button
                         onClick={() => handleToggleActive(k)}
                         className={`px-2 py-0.5 rounded text-[11px] font-medium transition-all ${
@@ -194,17 +180,17 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onReload }) =
                             : 'bg-zinc-800 text-zinc-500'
                         }`}
                       >
-                        {k.isActive ? 'Active' : 'Disabled'}
+                        {k.isActive ? t('common.active') : t('common.disabled')}
                       </button>
                     </td>
                     <td className="py-3.5 px-4 text-zinc-400">
-                      {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString() : 'Chưa dùng'}
+                      {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString() : t('common.never')}
                     </td>
                     <td className="py-3.5 px-4 text-right">
                       <button
                         onClick={() => handleDelete(k.id, k.name)}
                         className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition-all"
-                        title="Xóa key"
+                        title={t('apiKeys.deleteKey')}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -220,10 +206,10 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onReload }) =
       {/* Create Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
             <h3 className="text-base font-bold text-zinc-100 flex items-center gap-2">
               <Key className="w-4 h-4 text-emerald-400" />
-              Tạo API Key mới
+              {t('apiKeys.modal.title')}
             </h3>
 
             {createdKeyData ? (
@@ -231,10 +217,10 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onReload }) =
                 <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-xs space-y-2">
                   <div className="flex items-center gap-2 text-emerald-400 font-semibold">
                     <Shield className="w-4 h-4" />
-                    <span>API Key đã được tạo thành công!</span>
+                    <span>{t('apiKeys.modal.successTitle')}</span>
                   </div>
                   <p className="text-zinc-300">
-                    Vui lòng copy key bên dưới. Vì lý do bảo mật, key đầy đủ sẽ không hiển thị lại sau khi đóng cửa sổ này.
+                    {t('apiKeys.modal.successWarning')}
                   </p>
                   <div className="flex items-center justify-between gap-2 p-2.5 rounded bg-zinc-950 font-mono text-emerald-300 text-xs break-all">
                     <span>{createdKeyData.key}</span>
@@ -242,7 +228,7 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onReload }) =
                       onClick={() => copyToClipboard(createdKeyData.key)}
                       className="p-1.5 rounded bg-emerald-500 text-zinc-950 hover:bg-emerald-400 shrink-0 font-sans font-bold"
                     >
-                      {copiedKey === createdKeyData.key ? 'Đã copy' : 'Copy'}
+                      {copiedKey === createdKeyData.key ? t('common.copied') : t('common.copy')}
                     </button>
                   </div>
                 </div>
@@ -252,18 +238,20 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onReload }) =
                     onClick={closeModal}
                     className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl text-xs font-semibold"
                   >
-                    Hoàn tất
+                    {t('common.done')}
                   </button>
                 </div>
               </div>
             ) : (
               <form onSubmit={handleCreate} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-medium text-zinc-400 mb-1.5">Tên định danh</label>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1.5">
+                    {t('apiKeys.modal.nameLabel')}
+                  </label>
                   <input
                     type="text"
                     required
-                    placeholder="Ví dụ: Cursor Máy Bàn, Cline Laptop..."
+                    placeholder={t('apiKeys.modal.namePlaceholder')}
                     value={newKeyName}
                     onChange={(e) => setNewKeyName(e.target.value)}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-zinc-200 focus:outline-none focus:border-emerald-500"
@@ -271,15 +259,125 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onReload }) =
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-zinc-400 mb-1.5">Vai trò (Role)</label>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1.5">
+                    {t('apiKeys.modal.roleLabel')}
+                  </label>
                   <select
                     value={newKeyRole}
                     onChange={(e: any) => setNewKeyRole(e.target.value)}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2 text-xs text-zinc-200 focus:outline-none focus:border-emerald-500"
                   >
-                    <option value="client">Client (Cursor, Cline, OpenCode, Aider)</option>
-                    <option value="admin">Admin (Toàn quyền quản trị API)</option>
+                    <option value="client">{t('apiKeys.modal.roleClient')}</option>
+                    <option value="admin">{t('apiKeys.modal.roleAdmin')}</option>
                   </select>
+                </div>
+
+                {/* Account Selection Scope */}
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1.5">
+                    {t('apiKeys.modal.accountsScopeLabel')}
+                  </label>
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <button
+                      type="button"
+                      onClick={() => setUseAllAccounts(true)}
+                      className={`p-2.5 rounded-xl border text-xs font-medium text-left transition-all ${
+                        useAllAccounts
+                          ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                      }`}
+                    >
+                      <div className="font-semibold text-zinc-200">
+                        {t('apiKeys.modal.allAccountsOption')}
+                      </div>
+                      <div className="text-[10px] text-zinc-400 mt-0.5">
+                        {accounts.length} accounts
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUseAllAccounts(false);
+                        if (selectedAccountIds.length === 0 && accounts.length > 0) {
+                          setSelectedAccountIds([accounts[0].id]);
+                        }
+                      }}
+                      className={`p-2.5 rounded-xl border text-xs font-medium text-left transition-all ${
+                        !useAllAccounts
+                          ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                      }`}
+                    >
+                      <div className="font-semibold text-zinc-200">
+                        {t('apiKeys.modal.customAccountsOption')}
+                      </div>
+                      <div className="text-[10px] text-zinc-400 mt-0.5">
+                        {selectedAccountIds.length} selected
+                      </div>
+                    </button>
+                  </div>
+
+                  {!useAllAccounts && (
+                    <div className="p-2.5 rounded-xl bg-zinc-950 border border-zinc-800 space-y-1.5 max-h-48 overflow-y-auto">
+                      <p className="text-[11px] text-zinc-400 mb-1">
+                        {t('apiKeys.modal.selectAccountsHint')}
+                      </p>
+                      {accounts.length === 0 ? (
+                        <p className="text-xs text-zinc-500 italic py-2">
+                          {t('apiKeys.modal.noAccountsConfigured')}
+                        </p>
+                      ) : (
+                        accounts.map((acc) => {
+                          const isChecked = selectedAccountIds.includes(acc.id);
+                          return (
+                            <label
+                              key={acc.id}
+                              className={`flex items-center justify-between p-2 rounded-lg border cursor-pointer transition-all ${
+                                isChecked
+                                  ? 'bg-emerald-950/30 border-emerald-500/30 text-zinc-200'
+                                  : 'bg-zinc-900/60 border-zinc-800/80 text-zinc-400 hover:border-zinc-700'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedAccountIds((prev) => [...prev, acc.id]);
+                                    } else {
+                                      setSelectedAccountIds((prev) =>
+                                        prev.filter((id) => id !== acc.id),
+                                      );
+                                    }
+                                  }}
+                                  className="rounded border-zinc-700 text-emerald-500 focus:ring-0 focus:ring-offset-0 bg-zinc-900"
+                                />
+                                <div className="truncate">
+                                  <div className="text-xs font-semibold text-zinc-200 truncate">
+                                    {acc.email}
+                                  </div>
+                                  <div className="text-[10px] font-mono text-zinc-400">
+                                    {acc.id} • {acc.quota?.subscription_tier || 'Standard'}
+                                  </div>
+                                </div>
+                              </div>
+                              {acc.is_cooldown ? (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 shrink-0">
+                                  Cooldown
+                                </span>
+                              ) : (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 shrink-0">
+                                  Active
+                                </span>
+                              )}
+                            </label>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-end gap-2 pt-2">
@@ -288,14 +386,14 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onReload }) =
                     onClick={closeModal}
                     className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-medium"
                   >
-                    Hủy
+                    {t('common.cancel')}
                   </button>
                   <button
                     type="submit"
-                    disabled={creating}
+                    disabled={creating || (!useAllAccounts && selectedAccountIds.length === 0)}
                     className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-zinc-950 rounded-xl text-xs font-semibold disabled:opacity-50"
                   >
-                    {creating ? 'Đang tạo...' : 'Tạo Key'}
+                    {creating ? t('apiKeys.modal.submittingBtn') : t('apiKeys.modal.submitBtn')}
                   </button>
                 </div>
               </form>

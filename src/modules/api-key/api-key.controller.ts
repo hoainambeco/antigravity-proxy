@@ -20,6 +20,16 @@ import {
 } from "../proxy-gateway/server/guards/api-key-auth.util";
 import { ApiKeyService } from "./api-key.service";
 import { CreateApiKeyDto, UpdateApiKeyDto } from "./dto/api-key.dto";
+import type { ApiKey } from "./entities/api-key.entity";
+
+/**
+ * Wire shape for a stored key. `key` carries the masked preview, not a credential;
+ * `keyHash` never leaves the server.
+ */
+function toApiKeyView(record: ApiKey) {
+  const { keyHash: _keyHash, keyPreview, ...rest } = record;
+  return { ...rest, key: keyPreview };
+}
 
 @Controller("internal/api-keys")
 @UseGuards(AdminGuard)
@@ -30,31 +40,24 @@ export class ApiKeyController {
 
   @Get()
   async listKeys() {
-    const keys = await this.apiKeyService.listKeys(false);
+    const keys = await this.apiKeyService.listKeys();
     return {
       success: true,
-      data: keys,
+      data: keys.map(toApiKeyView),
     };
   }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async createKey(@Body() body: CreateApiKeyDto) {
-    const created = await this.apiKeyService.createKey(body);
+    const { record, key } = await this.apiKeyService.createKey(body);
     return {
       success: true,
-      data: created, // returns full raw key upon creation so user can copy it
+      // The only response that carries the key itself: the database keeps just its
+      // digest, so there is no endpoint that can hand it back later.
+      data: { ...toApiKeyView(record), key },
       message:
-        "API Key created successfully. Store the key securely as it will not be displayed in full again.",
-    };
-  }
-
-  @Get(":id/raw")
-  async getRawKey(@Param("id") id: string) {
-    const key = await this.apiKeyService.getRawKey(id);
-    return {
-      success: true,
-      key,
+        "API Key created successfully. Copy it now -- only a hash is stored, so it cannot be shown again.",
     };
   }
 
@@ -63,10 +66,7 @@ export class ApiKeyController {
     const key = await this.apiKeyService.getKeyById(id);
     return {
       success: true,
-      data: {
-        ...key,
-        key: this.apiKeyService.maskKey(key.key),
-      },
+      data: toApiKeyView(key),
     };
   }
 
@@ -75,10 +75,7 @@ export class ApiKeyController {
     const updated = await this.apiKeyService.updateKey(id, body);
     return {
       success: true,
-      data: {
-        ...updated,
-        key: this.apiKeyService.maskKey(updated.key),
-      },
+      data: toApiKeyView(updated),
       message: "API Key updated successfully",
     };
   }

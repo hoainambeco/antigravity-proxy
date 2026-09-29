@@ -79,20 +79,21 @@ export const api = {
     return res.data;
   },
 
-  getRawApiKey: async (id: string) => {
-    const res = await fetchJson<{ success: boolean; key: string }>(
-      `/internal/api-keys/${encodeURIComponent(id)}/raw`,
-    );
-    return res.key;
-  },
-
-  createApiKey: (data: { name: string; role?: 'admin' | 'client'; description?: string }) =>
+  createApiKey: (data: {
+    name: string;
+    role?: 'admin' | 'client';
+    allowedAccountIds?: string[] | null;
+    description?: string;
+  }) =>
     fetchJson<{ success: boolean; data: ApiKeyItem }>('/internal/api-keys', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 
-  updateApiKey: (id: string, data: { name?: string; isActive?: boolean }) =>
+  updateApiKey: (
+    id: string,
+    data: { name?: string; isActive?: boolean; allowedAccountIds?: string[] | null },
+  ) =>
     fetchJson<{ success: boolean; data: ApiKeyItem }>(`/internal/api-keys/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
