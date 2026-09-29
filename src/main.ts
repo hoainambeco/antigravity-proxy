@@ -15,7 +15,7 @@ async function run() {
     auto_start: true,
   };
 
-  logger.info(`Starting Antigravity Proxy Standalone on port ${port}...`);
+  logger.info(`Starting LLM Gateway Proxy Standalone on port ${port}...`);
   if (apiKey) {
     logger.info(`Master API Key protection enabled via .env.`);
   } else {
@@ -29,7 +29,7 @@ async function run() {
   if (result.success) {
     console.log(`\n======================================================`);
     console.log(
-      `🚀 Antigravity Proxy is RUNNING on http://0.0.0.0:${result.port}`,
+      `🚀 LLM Gateway Proxy is RUNNING on http://0.0.0.0:${result.port}`,
     );
     console.log(`======================================================`);
     console.log(`Supported endpoints:`);
@@ -51,7 +51,7 @@ async function run() {
   }
 
   const shutdown = async (signal: string) => {
-    logger.info(`Received ${signal}. Shutting down Antigravity Proxy...`);
+    logger.info(`Received ${signal}. Shutting down LLM Gateway Proxy...`);
     await stopNestServer();
     process.exit(0);
   };

@@ -1,8 +1,8 @@
-# Tài liệu Hướng dẫn Toàn diện: Antigravity Proxy Standalone
+# Tài liệu Hướng dẫn Toàn diện: LLM Gateway Proxy Standalone
 
-**Antigravity Proxy** là một cổng chuyển tiếp (LLM Proxy Gateway) hiệu năng cao, độc lập, được trích xuất từ lõi NestJS/Fastify của dự án AntigravityManager. 
+**LLM Gateway Proxy** là một cổng chuyển tiếp (LLM Proxy Gateway) hiệu năng cao, độc lập, được trích xuất từ lõi NestJS/Fastify của dự án AntigravityManager. 
 
-Dự án cho phép bạn sử dụng các tài khoản **Google Cloud Code / Antigravity** thông qua các giao thức phổ biến: **OpenAI**, **Anthropic Messages** và **Gemini API** với cơ chế tự động xoay vòng tài khoản (Multi-Account Pooling), tự động phục hồi Thought Signatures và chuyển tài khoản khi gặp lỗi giới hạn tốc độ (Rate Limit 429).
+Dự án cho phép bạn sử dụng các tài khoản **Google Cloud Code / Antigravity**, **GitHub Copilot**, **Claude.ai**, **ChatGPT** và **OpenAI** thông qua các giao thức phổ biến: **OpenAI**, **Anthropic Messages** và **Gemini API** với cơ chế tự động xoay vòng tài khoản (Multi-Account Pooling), tự động phục hồi Thought Signatures và chuyển tài khoản khi gặp lỗi giới hạn tốc độ (Rate Limit 429).
 
 ---
 
@@ -45,7 +45,7 @@ Dự án cho phép bạn sử dụng các tài khoản **Google Cloud Code / Ant
                                   | HTTP (OpenAI / Anthropic / Gemini formats)
                                   v
    +-------------------------------------------------------------+
-   |                Antigravity Proxy Gateway (Fastify)          |
+   |                LLM Gateway Proxy (Fastify)                  |
    |                                                             |
    |  [Guards & Auth] -> Xác thực PROXY_API_KEY (nếu có)         |
    |  [Mappers]       -> Chuẩn hóa Request sang định dạng Google |
@@ -77,8 +77,8 @@ Dự án cho phép bạn sử dụng các tài khoản **Google Cloud Code / Ant
 ### Các bước cài đặt
 ```bash
 # 1. Clone và di chuyển vào thư mục dự án
-git clone https://github.com/hoainambeco/antigravity-proxy.git
-cd antigravity-proxy
+git clone https://github.com/hoainambeco/llm-gateway-proxy.git
+cd llm-gateway-proxy
 
 # 2. Cài đặt các gói phụ thuộc
 npm install
@@ -268,7 +268,7 @@ npm install -g pm2
 
 # Build và khởi chạy
 npm run build
-pm2 start dist/main.js --name antigravity-proxy
+pm2 start dist/main.js --name llm-gateway-proxy
 
 # Lưu trạng thái tự khởi động lại khi reboot VPS:
 pm2 save
@@ -279,16 +279,16 @@ pm2 startup
 File `Dockerfile` đã được tối ưu hóa multi-stage build:
 ```bash
 # Build Docker image
-docker build -t antigravity-proxy .
+docker build -t llm-gateway-proxy .
 
 # Chạy container và mount file accounts.json
 docker run -d \
-  --name antigravity-proxy \
+  --name llm-gateway-proxy \
   -p 8045:8045 \
   -v $(pwd)/accounts.json:/app/data/accounts.json \
   -e PORT=8045 \
   --restart always \
-  antigravity-proxy
+  llm-gateway-proxy
 ```
 
 ---
@@ -361,7 +361,7 @@ opencode --model openai/claude-3-7-sonnet
 ---
 
 ### C. Claude Code CLI (Official Anthropic CLI)
-Claude Code sử dụng trực tiếp giao thức Anthropic Messages API (`/v1/messages`) được Antigravity Proxy giả lập chuẩn 100%:
+Claude Code sử dụng trực tiếp giao thức Anthropic Messages API (`/v1/messages`) được LLM Gateway Proxy giả lập chuẩn 100%:
 
 ```bash
 # Thiết lập biến môi trường
@@ -376,7 +376,7 @@ claude
 ---
 
 ### D. OpenAI Codex / OpenAI SDK / ChatGPT Apps
-Bất kỳ công cụ hoặc SDK nào hỗ trợ OpenAI đều có thể trỏ thẳng vào Antigravity Proxy:
+Bất kỳ công cụ hoặc SDK nào hỗ trợ OpenAI đều có thể trỏ thẳng vào LLM Gateway Proxy:
 
 #### Node.js / TypeScript (OpenAI SDK):
 ```typescript
@@ -414,7 +414,7 @@ print(response.choices[0].message.content)
 ```
 
 #### Codex WebSocket Responses (`/v1/responses`):
-Antigravity Proxy hỗ trợ endpoint WebSocket chuẩn `/v1/responses` của OpenAI Responses API dành cho các agent Codex tương tác thời gian thực hai chiều.
+LLM Gateway Proxy hỗ trợ endpoint WebSocket chuẩn `/v1/responses` của OpenAI Responses API dành cho các agent Codex tương tác thời gian thực hai chiều.
 
 ---
 

@@ -66,7 +66,7 @@ export const en: Translations = {
     },
   },
   login: {
-    title: 'Antigravity Proxy',
+    title: 'LLM Gateway Proxy',
     subtitle: 'Admin Dashboard',
     apiKeyLabel: 'API Key',
     placeholder: 'Enter your API Key',

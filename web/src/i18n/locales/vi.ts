@@ -66,7 +66,7 @@ export const vi: Translations = {
     },
   },
   login: {
-    title: 'Antigravity Proxy',
+    title: 'LLM Gateway Proxy',
     subtitle: 'Admin Dashboard',
     apiKeyLabel: 'API Key',
     placeholder: 'Nhập API Key của bạn',

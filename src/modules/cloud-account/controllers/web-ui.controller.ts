@@ -8,7 +8,7 @@ export class WebUiController {
     if (typeof (reply as any).sendFile === 'function') {
       return (reply as any).sendFile('index.html');
     }
-    return reply.status(200).send('Antigravity Proxy is running.');
+    return reply.status(200).send('LLM Gateway Proxy is running.');
   }
 
   @Get('dashboard')
@@ -16,7 +16,7 @@ export class WebUiController {
     if (typeof (reply as any).sendFile === 'function') {
       return (reply as any).sendFile('index.html');
     }
-    return reply.status(200).send('Antigravity Proxy is running.');
+    return reply.status(200).send('LLM Gateway Proxy is running.');
   }
 
   @Get('accounts')
@@ -24,7 +24,7 @@ export class WebUiController {
     if (typeof (reply as any).sendFile === 'function') {
       return (reply as any).sendFile('index.html');
     }
-    return reply.status(200).send('Antigravity Proxy is running.');
+    return reply.status(200).send('LLM Gateway Proxy is running.');
   }
 
   @Get('models')
@@ -32,7 +32,7 @@ export class WebUiController {
     if (typeof (reply as any).sendFile === 'function') {
       return (reply as any).sendFile('index.html');
     }
-    return reply.status(200).send('Antigravity Proxy is running.');
+    return reply.status(200).send('LLM Gateway Proxy is running.');
   }
 
   @Get('api-keys')
@@ -40,7 +40,7 @@ export class WebUiController {
     if (typeof (reply as any).sendFile === 'function') {
       return (reply as any).sendFile('index.html');
     }
-    return reply.status(200).send('Antigravity Proxy is running.');
+    return reply.status(200).send('LLM Gateway Proxy is running.');
   }
 
   @Get('audit')
@@ -48,6 +48,6 @@ export class WebUiController {
     if (typeof (reply as any).sendFile === 'function') {
       return (reply as any).sendFile('index.html');
     }
-    return reply.status(200).send('Antigravity Proxy is running.');
+    return reply.status(200).send('LLM Gateway Proxy is running.');
   }
 }

@@ -53,7 +53,7 @@ export function getCliLanguage(): CliLanguage {
 export const cliTranslations = {
   en: {
     addAccount: {
-      banner: '🔑 Antigravity Proxy - Add Google Cloud Account',
+      banner: '🔑 LLM Gateway Proxy - Add Google Cloud Account',
       cannotOpenPort: 'Cannot open OAuth callback port on any of: {ports}',
       error: '❌ Error: {message}',
       listening: 'Listening for OAuth callback at: {uri}',
@@ -79,7 +79,7 @@ export const cliTranslations = {
     },
     apiKey: {
       usage: `
-Antigravity Proxy - API Key Management (SQLite)
+LLM Gateway Proxy - API Key Management (SQLite)
 ======================================================
 Usage:
   npm run api-key list                      - List all API Keys
@@ -135,7 +135,7 @@ Examples:
   },
   vi: {
     addAccount: {
-      banner: '🔑 Antigravity Proxy - Thêm tài khoản Google Cloud',
+      banner: '🔑 LLM Gateway Proxy - Thêm tài khoản Google Cloud',
       cannotOpenPort: 'Không thể mở cổng callback OAuth trên các cổng: {ports}',
       error: '❌ Lỗi: {message}',
       listening: 'Đang lắng nghe OAuth callback tại: {uri}',
@@ -161,7 +161,7 @@ Examples:
     },
     apiKey: {
       usage: `
-Antigravity Proxy - Quản lý API Key (SQLite)
+LLM Gateway Proxy - Quản lý API Key (SQLite)
 ======================================================
 Sử dụng:
   npm run api-key list                      - Liệt kê tất cả API Key

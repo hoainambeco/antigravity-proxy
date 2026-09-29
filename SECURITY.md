@@ -32,7 +32,7 @@ branches — pull `master` and rebuild.
 
 Report privately, **not** as a public GitHub issue:
 
-- Open a [GitHub Security Advisory](https://github.com/hoainambeco/antigravity-proxy/security/advisories/new), or
+- Open a [GitHub Security Advisory](https://github.com/hoainambeco/llm-gateway-proxy/security/advisories/new), or
 - Message the maintainer through GitHub ([@hoainambeco](https://github.com/hoainambeco)).
 
 Please include the affected version or commit, a description of the impact, and the

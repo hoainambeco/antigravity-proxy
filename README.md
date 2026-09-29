@@ -1,8 +1,8 @@
-# Antigravity Proxy (Standalone)
+# LLM Gateway Proxy (Standalone)
 
 High-performance, standalone multi-protocol LLM Proxy Gateway extracted from AntigravityManager. Built with **NestJS + Fastify**.
 
-Seamlessly proxies OpenAI, Anthropic, and Gemini API requests to Google Cloud Code / Antigravity upstream with multi-account round-robin scheduling, automatic token refresh, quota tracking, and thought signature recovery for thinking models.
+Seamlessly proxies OpenAI, Anthropic, and Gemini API requests to Google Cloud Code / Antigravity, GitHub Copilot, Claude.ai, ChatGPT and OpenAI upstreams with multi-account round-robin scheduling, automatic token refresh, quota tracking, and thought signature recovery for thinking models.
 
 > ### ⚠️ Disclaimer — read before using
 >
@@ -49,7 +49,7 @@ Seamlessly proxies OpenAI, Anthropic, and Gemini API requests to Google Cloud Co
 ### 1. Installation
 
 ```bash
-cd antigravity-proxy
+cd llm-gateway-proxy
 npm install
 ```
 
@@ -291,7 +291,7 @@ one.
 Build and run:
 
 ```bash
-docker build -t antigravity-proxy .
+docker build -t llm-gateway-proxy .
 
 # Run mounting accounts.json and SQLite data volume.
 # -p 127.0.0.1:8045:8045 keeps the port on this machine. The image sets HOST=0.0.0.0
@@ -299,19 +299,19 @@ docker build -t antigravity-proxy .
 # longer keep itself on loopback in Open Mode -- so bind the published port yourself, and
 # drop the 127.0.0.1 prefix only once PROXY_API_KEY is set. See "Exposing the proxy".
 docker run -d \
-  --name antigravity-proxy \
+  --name llm-gateway-proxy \
   -p 127.0.0.1:8045:8045 \
   -v $(pwd)/accounts.json:/app/data/accounts.json \
   -v $(pwd)/data:/app/data \
   -e PORT=8045 \
   -e PROXY_API_KEY=sk-change-me \
-  antigravity-proxy
+  llm-gateway-proxy
 ```
 
 > **Note:** TypeORM migrations execute automatically on container startup (`migrationsRun: true`).
 > To manually trigger production migrations inside a running container:
 > ```bash
-> docker exec -it antigravity-proxy npm run migration:run:prod
+> docker exec -it llm-gateway-proxy npm run migration:run:prod
 > ```
 
 ---
