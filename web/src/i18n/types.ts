@@ -98,6 +98,8 @@ export interface Translations {
     accountDetailsLink: string;
     noAccountsWarning: string;
     noQuotaData: string;
+    providerModelsLabel: string;
+    providerUsageLabel: string;
   };
   accounts: {
     titleWithCount: string;

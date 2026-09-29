@@ -13,8 +13,10 @@ import {
 } from '../../shared/services/model-availability.service';
 import { AccountLeaseService } from './account-lease.service';
 import { ImageAccountSchedulerService } from './image-account-scheduler.service';
+import { UpstreamsModule } from '@/modules/proxy-gateway/upstreams/upstreams.module';
 
 @Module({
+  imports: [UpstreamsModule],
   providers: [
     AccountLeaseService,
     ImageAccountSchedulerService,

@@ -104,6 +104,8 @@ export const vi: Translations = {
     noAccountsWarning:
       'Chưa có tài khoản nào được kết nối. Bấm "Thêm tài khoản" để bắt đầu.',
     noQuotaData: 'Chưa fetch quota hoặc không có model tiêu chuẩn.',
+    providerModelsLabel: 'Các model khả dụng từ tài khoản provider này:',
+    providerUsageLabel: 'Mức sử dụng / hạn mức:',
   },
   accounts: {
     titleWithCount: 'Tài khoản Google Cloud ({count})',

@@ -105,6 +105,8 @@ export const en: Translations = {
     noAccountsWarning:
       'No accounts connected yet. Click "Add Google Account" to get started.',
     noQuotaData: 'Quota not fetched yet or no standard models found.',
+    providerModelsLabel: 'Available models from this provider account:',
+    providerUsageLabel: 'Usage / quota:',
   },
   accounts: {
     titleWithCount: 'Google Cloud Accounts ({count})',

@@ -43,6 +43,18 @@ export interface Account {
     models?: Record<string, ModelQuotaInfo>;
     subscription_tier?: string;
   };
+  provider_models?: string[];
+  provider_usage?: {
+    plan?: string;
+    usages: Array<{
+      label: string;
+      percentage: number;
+      used?: number;
+      limit?: number;
+      resetAt?: string;
+    }>;
+    unavailable?: string;
+  };
 }
 
 export interface RoutingRule {

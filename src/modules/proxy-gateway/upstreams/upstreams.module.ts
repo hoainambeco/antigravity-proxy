@@ -7,6 +7,7 @@ import { CopilotTokenService } from './copilot/copilot-token.service';
 import { CopilotUpstreamService } from './copilot/copilot-upstream.service';
 import { ClaudeWebUpstreamService } from './claude-web/claude-web-upstream.service';
 import { ChatGPTWebUpstreamService } from './chatgpt-web/chatgpt-web-upstream.service';
+import { ProviderModelDiscoveryService } from './provider-model-discovery.service';
 
 @Module({
   providers: [
@@ -18,6 +19,7 @@ import { ChatGPTWebUpstreamService } from './chatgpt-web/chatgpt-web-upstream.se
     CopilotUpstreamService,
     ClaudeWebUpstreamService,
     ChatGPTWebUpstreamService,
+    ProviderModelDiscoveryService,
   ],
   exports: [
     AnthropicUpstreamService,
@@ -28,6 +30,7 @@ import { ChatGPTWebUpstreamService } from './chatgpt-web/chatgpt-web-upstream.se
     CopilotUpstreamService,
     ClaudeWebUpstreamService,
     ChatGPTWebUpstreamService,
+    ProviderModelDiscoveryService,
   ],
 })
 export class UpstreamsModule {}
