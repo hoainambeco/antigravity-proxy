@@ -5,6 +5,7 @@ import { GoogleAPIService } from '../modules/cloud-account/services/GoogleAPISer
 import { jsonAccountStoreInstance } from '../modules/proxy-gateway/server/modules/account-lease/adapters/json-account.store';
 import { CloudAccount } from '../modules/cloud-account/types';
 import { logger } from '../shared/logging/logger';
+import { tCli, setCliLanguage, type CliLanguage } from './i18n';
 
 const OAUTH_HOST = '127.0.0.1';
 const ALLOWED_PORTS = [8888, 8889, 8890, 8891, 8892];
@@ -33,27 +34,36 @@ async function startServer(): Promise<{ server: http.Server; port: number; redir
       // Port in use, continue to next
     }
   }
-  throw new Error(`Không thể mở cổng callback OAuth trên các cổng: ${ALLOWED_PORTS.join(', ')}`);
+  throw new Error(tCli('addAccount.cannotOpenPort', { ports: ALLOWED_PORTS.join(', ') }));
 }
 
 async function main() {
+  const args = process.argv.slice(2);
+  const langIdx = args.indexOf('--lang');
+  if (langIdx !== -1 && args[langIdx + 1]) {
+    const l = args[langIdx + 1].toLowerCase() as CliLanguage;
+    if (l === 'en' || l === 'vi') {
+      setCliLanguage(l);
+    }
+  }
+
   console.log('\n======================================================');
-  console.log('🔑 Antigravity Proxy - Thêm tài khoản Google Cloud');
+  console.log(tCli('addAccount.banner'));
   console.log('======================================================\n');
 
   let serverInfo: { server: http.Server; port: number; redirectUri: string };
   try {
     serverInfo = await startServer();
   } catch (err: any) {
-    console.error('❌ Lỗi:', err.message);
+    console.error(tCli('addAccount.error', { message: err.message }));
     process.exit(1);
   }
 
   const { server, port, redirectUri } = serverInfo;
   const authUrl = GoogleAPIService.getAuthUrl(undefined, redirectUri);
 
-  console.log(`Đang lắng nghe OAuth callback tại: ${redirectUri}`);
-  console.log('\n👉 Vui lòng mở đường link bên dưới trên trình duyệt để đăng nhập Google:\n');
+  console.log(tCli('addAccount.listening', { uri: redirectUri }));
+  console.log('\n' + tCli('addAccount.openLinkPrompt'));
   console.log(`\x1b[36m${authUrl}\x1b[0m\n`);
 
   openBrowser(authUrl);
@@ -70,8 +80,8 @@ async function main() {
           res.end(`
             <html>
               <body style="font-family: system-ui, sans-serif; text-align: center; padding-top: 50px;">
-                <h2 style="color: #10b981;">✅ Đăng nhập thành công!</h2>
-                <p>Bạn có thể đóng tab này và quay lại Terminal.</p>
+                <h2 style="color: #10b981;">${tCli('addAccount.successHtmlTitle')}</h2>
+                <p>${tCli('addAccount.successHtmlDesc')}</p>
               </body>
             </html>
           `);
@@ -79,8 +89,8 @@ async function main() {
           res.end(`
             <html>
               <body style="font-family: system-ui, sans-serif; text-align: center; padding-top: 50px;">
-                <h2 style="color: #ef4444;">❌ Đăng nhập thất bại</h2>
-                <p>${error || 'Không nhận được mã xác thực.'}</p>
+                <h2 style="color: #ef4444;">${tCli('addAccount.failedHtmlTitle')}</h2>
+                <p>${error || tCli('addAccount.failedHtmlDesc')}</p>
               </body>
             </html>
           `);
@@ -98,15 +108,15 @@ async function main() {
   server.close();
 
   if (error || !code) {
-    console.error(`\n❌ Đăng nhập bị hủy hoặc gặp lỗi: ${error || 'Unknown error'}`);
+    console.error('\n' + tCli('addAccount.cancelledOrError', { message: error || 'Unknown error' }));
     process.exit(1);
   }
 
-  console.log('⏳ Đang trao đổi mã xác thực để lấy token...');
+  console.log(tCli('addAccount.exchangingCode'));
 
   try {
     const tokens = await GoogleAPIService.exchangeCode(code, undefined, undefined, redirectUri);
-    console.log('✅ Đã nhận được access_token và refresh_token.');
+    console.log(tCli('addAccount.tokenReceived'));
 
     let email = 'unknown@gmail.com';
     try {
@@ -115,7 +125,7 @@ async function main() {
         email = userInfo.email;
       }
     } catch {
-      logger.warn('Không lấy được profile email qua API, sử dụng mặc định.');
+      logger.warn('Could not fetch user profile email via API, using default.');
     }
 
     let projectId = '';
@@ -123,7 +133,7 @@ async function main() {
       const projectContext = await GoogleAPIService.fetchProjectContext(tokens.access_token);
       projectId = projectContext.projectId || '';
     } catch {
-      logger.warn('Không tự động lấy được project_id.');
+      logger.warn('Could not auto-fetch project_id.');
     }
 
     const accounts = await jsonAccountStoreInstance.getAccounts();
@@ -144,8 +154,6 @@ async function main() {
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,
         expires_in: tokens.expires_in,
-        // Seconds, not milliseconds: the lease runtime compares this against
-        // Math.floor(Date.now() / 1000) and rewrites it in seconds after a refresh.
         expiry_timestamp: Math.floor(Date.now() / 1000) + tokens.expires_in,
         token_type: tokens.token_type || 'Bearer',
         email,
@@ -155,33 +163,33 @@ async function main() {
     };
 
     try {
-      console.log('📡 Đang đồng bộ danh sách models và hạn mức từ Google Upstream...');
+      console.log(tCli('addAccount.syncingModels'));
       const quota = await GoogleAPIService.fetchQuota(tokens.access_token);
       newAccount.quota = quota;
       const modelCount = Object.keys(quota.models || {}).length;
-      console.log(`✅ Đã đồng bộ thành công ${modelCount} models khả dụng từ Google!`);
+      console.log(tCli('addAccount.modelsSynced', { count: modelCount }));
     } catch {
-      logger.warn('Chưa lấy được quota ngay lúc này, hệ thống sẽ tự động đồng bộ khi chạy.');
+      logger.warn(tCli('addAccount.quotaWarning'));
     }
 
     await jsonAccountStoreInstance.upsertAccount(newAccount);
 
     if (existingIndex !== -1) {
-      console.log(`\n🔄 Đã cập nhật token cho tài khoản có sẵn [${email}] (ID: ${accountId})`);
+      console.log(`\n` + tCli('addAccount.accountUpdated', { email, id: accountId }));
     } else {
-      console.log(`\n🎉 Đã thêm tài khoản mới thành công!`);
+      console.log(`\n` + tCli('addAccount.accountAdded'));
     }
 
     console.log('======================================================');
-    console.log(`📧 Email:      ${email}`);
-    console.log(`🆔 Account ID: ${accountId}`);
-    console.log(`📂 Project ID: ${projectId || '(chưa có hoặc chưa kích hoạt GCP)'}`);
-    console.log(`💾 Đã lưu vào: accounts.json`);
+    console.log(tCli('addAccount.summaryEmail', { email }));
+    console.log(tCli('addAccount.summaryId', { id: accountId }));
+    console.log(tCli('addAccount.summaryProject', { project: projectId || tCli('addAccount.noProject') }));
+    console.log(tCli('addAccount.summarySaved'));
     const storedAccounts = await jsonAccountStoreInstance.getAccounts();
-    console.log(`📊 Tổng số tài khoản hiện tại: ${storedAccounts.length}`);
+    console.log(tCli('addAccount.summaryTotal', { count: storedAccounts.length }));
     console.log('======================================================\n');
   } catch (err: any) {
-    console.error('\n❌ Xảy ra lỗi trong quá trình xử lý token:', err.message || err);
+    console.error('\n' + tCli('addAccount.error', { message: err.message || err }));
     process.exit(1);
   }
 }

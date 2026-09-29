@@ -9,6 +9,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { getServerConfig } from "../../../../server/server-config";
+import { setCurrentAuditAllowedAccountIds } from "../../audit/traffic-audit-context";
 import {
   buildAuthErrorBody,
   resolveAuthErrorSurface,
@@ -78,6 +79,7 @@ export class ProxyGuard implements CanActivate {
           const authResult = await this.apiKeyService.validateKey(clientToken);
           if (authResult.valid) {
             request.apiKeyInfo = authResult;
+            setCurrentAuditAllowedAccountIds(authResult.allowedAccountIds ?? null);
           }
         }
         return true;
@@ -95,6 +97,7 @@ export class ProxyGuard implements CanActivate {
       const authResult = await this.apiKeyService.validateKey(clientToken);
       if (authResult.valid) {
         request.apiKeyInfo = authResult;
+        setCurrentAuditAllowedAccountIds(authResult.allowedAccountIds ?? null);
         return true;
       }
 

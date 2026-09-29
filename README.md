@@ -4,6 +4,22 @@ High-performance, standalone multi-protocol LLM Proxy Gateway extracted from Ant
 
 Seamlessly proxies OpenAI, Anthropic, and Gemini API requests to Google Cloud Code / Antigravity upstream with multi-account round-robin scheduling, automatic token refresh, quota tracking, and thought signature recovery for thinking models.
 
+> ### ⚠️ Disclaimer — read before using
+>
+> This is an independent research project. It is **not** affiliated with, endorsed by, or
+> supported by Google.
+>
+> It talks to `cloudcode-pa.googleapis.com/v1internal` using OAuth scopes that Google
+> grants only to its own first-party clients, so it only works with a credential pair
+> taken from an Antigravity installation — the repository ships none, and you must supply
+> your own (see [OAuth Client Credentials](#oauth-client-credentials)).
+>
+> Whether that use complies with Google's Terms of Service is **your** responsibility, as
+> is any consequence to the Google accounts you link, up to and including suspension. The
+> software is provided as is, without warranty of any kind, under the
+> [MIT License](LICENSE). Published for education and interoperability research. If you
+> need a supported path to these models, use the official Gemini API.
+
 ---
 
 ## Features
@@ -187,6 +203,50 @@ exchange or refresh fails.
 
 ---
 
+## Exposing the proxy
+
+The proxy fronts your own Google accounts. Anyone who can reach the port can spend their
+quota, read the model catalog, and — with an admin key — read the audit log, which stores
+every prompt and response in full.
+
+### Open Mode
+
+With no `PROXY_API_KEY` in `.env` **and** no key in the SQLite database, the proxy accepts
+every request unauthenticated. This is the default on a fresh clone, and it is convenient
+for local use only.
+
+To limit the damage, the bind address is chosen for you when `HOST` is unset:
+
+| State | Default bind | Reachable from |
+| --- | --- | --- |
+| Open Mode (no key anywhere) | `127.0.0.1` | this machine only |
+| An API key exists | `0.0.0.0` | the network |
+
+**Setting `HOST=0.0.0.0` yourself overrides that protection.** Do it in Open Mode and you
+publish an unauthenticated gateway to your Google accounts to everything that can route to
+the host. The server logs a loud warning when it detects exactly that, but it will still
+start — it cannot tell a deliberate LAN deployment from a mistake.
+
+### Before putting it on a network
+
+1. Set `PROXY_API_KEY` in `.env`, or create a key: `npm run api-key`.
+2. Confirm the startup log does not mention Open Mode.
+3. Keep it behind a reverse proxy with TLS. The proxy speaks plain HTTP, so without one
+   your API keys cross the network in cleartext.
+4. Add rate limiting at that reverse proxy if you need it. The proxy itself has none by
+   design, so nothing throttles an attacker guessing API keys — set the limit high enough
+   that streaming agent sessions are not cut off.
+5. Do not expose it to the public internet. There is no rate limiting and `enableCors()`
+   runs with no allowlist — both deliberate, so that long agent sessions are not throttled
+   and browser-based agents are not blocked by origin. See [SECURITY.md](SECURITY.md) for
+   the full list of accepted weaknesses.
+
+Client API keys are stored only as SHA-256 digests. A key is displayed once, when it is
+created, and cannot be recovered afterwards — if you lose one, delete it and create a new
+one.
+
+---
+
 ## Running with Docker
 
 Build and run:
@@ -194,13 +254,18 @@ Build and run:
 ```bash
 docker build -t antigravity-proxy .
 
-# Run mounting accounts.json and SQLite data volume
+# Run mounting accounts.json and SQLite data volume.
+# -p 127.0.0.1:8045:8045 keeps the port on this machine. The image sets HOST=0.0.0.0
+# because a container must bind that to be reachable at all, which means the proxy can no
+# longer keep itself on loopback in Open Mode -- so bind the published port yourself, and
+# drop the 127.0.0.1 prefix only once PROXY_API_KEY is set. See "Exposing the proxy".
 docker run -d \
   --name antigravity-proxy \
-  -p 8045:8045 \
+  -p 127.0.0.1:8045:8045 \
   -v $(pwd)/accounts.json:/app/data/accounts.json \
   -v $(pwd)/data:/app/data \
   -e PORT=8045 \
+  -e PROXY_API_KEY=sk-change-me \
   antigravity-proxy
 ```
 

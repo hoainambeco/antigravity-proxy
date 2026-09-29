@@ -50,6 +50,7 @@ export interface ApiKeyItem {
   key: string;
   role: 'admin' | 'client';
   isActive: boolean;
+  allowedAccountIds?: string[] | null;
   lastUsedAt?: string | null;
   createdAt: string;
 }

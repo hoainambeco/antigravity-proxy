@@ -35,6 +35,9 @@ VOLUME ["/app/data"]
 ENV ACCOUNTS_FILE=/app/data/accounts.json
 ENV SQLITE_DB_PATH=/app/data/antigravity.sqlite
 ENV PORT=8045
+# Inside a container 0.0.0.0 is required for -p port mapping to reach the process.
+# It therefore overrides the loopback-in-Open-Mode default, so the safety boundary
+# moves to the host: publish with -p 127.0.0.1:8045:8045 until an API key is set.
 ENV HOST=0.0.0.0
 
 CMD ["node", "dist/main"]

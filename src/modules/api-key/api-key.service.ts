@@ -8,9 +8,15 @@ import {
   OnModuleInit,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { randomBytes } from "node:crypto";
 import { Repository } from "typeorm";
 import { hasConfiguredApiKey } from "../proxy-gateway/server/guards/api-key-auth.util";
+import {
+  generateApiKey,
+  hashApiKey,
+  hashesEqual,
+  MIN_CUSTOM_KEY_LENGTH,
+  previewApiKey,
+} from "./api-key-hash";
 import {
   ApiKeyValidationResult,
   CreateApiKeyDto,
@@ -18,9 +24,16 @@ import {
 } from "./dto/api-key.dto";
 import { ApiKey } from "./entities/api-key.entity";
 
+/** A newly created key, paired with the one and only view of its plaintext. */
+export interface CreatedApiKey {
+  record: ApiKey;
+  key: string;
+}
+
 @Injectable()
 export class ApiKeyService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ApiKeyService.name);
+  /** Keyed by SHA-256 digest of the key, never by the key itself. */
   private keyCache = new Map<string, ApiKey>();
   private pendingLastUsed = new Map<string, Date>();
   private flushTimer: NodeJS.Timeout | null = null;
@@ -58,7 +71,7 @@ export class ApiKeyService implements OnModuleInit, OnModuleDestroy {
       const keys = await this.apiKeyRepository.find();
       this.keyCache.clear();
       for (const item of keys) {
-        this.keyCache.set(item.key, item);
+        this.keyCache.set(item.keyHash, item);
       }
       this.logger.log(
         `Loaded ${this.keyCache.size} API key(s) from SQLite database into memory cache.`,
@@ -68,17 +81,6 @@ export class ApiKeyService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /**
-   * Mask a key for safe display (e.g. sk-ag-1a2b...c3d4)
-   */
-  maskKey(key: string): string {
-    if (!key || key.length < 12) {
-      return "****";
-    }
-    const prefix = key.slice(0, 8);
-    const suffix = key.slice(-4);
-    return `${prefix}...${suffix}`;
-  }
 
   /**
    * Check if any key protection is active (either master key in env/config OR keys in DB)
@@ -105,6 +107,8 @@ export class ApiKeyService implements OnModuleInit, OnModuleDestroy {
       return { valid: false, reason: "invalid_key" };
     }
 
+    const tokenHash = hashApiKey(trimmed);
+
     // 1. Check Master Key from config or environment
     const config = getServerConfig();
     const masterKey = (
@@ -112,17 +116,18 @@ export class ApiKeyService implements OnModuleInit, OnModuleDestroy {
       process.env.PROXY_API_KEY ||
       ""
     ).trim();
-    if (masterKey && trimmed === masterKey) {
+    if (masterKey && hashesEqual(hashApiKey(masterKey), tokenHash)) {
       return {
         valid: true,
         isMaster: true,
         role: "admin",
         keyName: "Master Key (.env)",
+        allowedAccountIds: null,
       };
     }
 
-    // 2. Check in-memory cache
-    const keyEntity = this.keyCache.get(trimmed);
+    // 2. Check in-memory cache, keyed by digest
+    const keyEntity = this.keyCache.get(tokenHash);
     if (!keyEntity) {
       return { valid: false, reason: "invalid_key" };
     }
@@ -153,6 +158,7 @@ export class ApiKeyService implements OnModuleInit, OnModuleDestroy {
       role: keyEntity.role,
       keyId: keyEntity.id,
       keyName: keyEntity.name,
+      allowedAccountIds: keyEntity.allowedAccountIds ?? null,
     };
   }
 
@@ -175,10 +181,10 @@ export class ApiKeyService implements OnModuleInit, OnModuleDestroy {
     if (token && typeof token === "string") {
       const trimmed = token.trim();
       const dbKey = await this.apiKeyRepository.findOne({
-        where: { key: trimmed },
+        where: { keyHash: hashApiKey(trimmed) },
       });
       if (dbKey) {
-        this.keyCache.set(dbKey.key, dbKey);
+        this.keyCache.set(dbKey.keyHash, dbKey);
         return this.validateKeySync(trimmed);
       }
     }
@@ -222,56 +228,63 @@ export class ApiKeyService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Create a new API Key
+   * Create a new API Key.
+   *
+   * The plaintext key is returned here and nowhere else, because only its digest is
+   * stored. A caller that loses it must create a replacement.
    */
-  async createKey(dto: CreateApiKeyDto): Promise<ApiKey> {
+  async createKey(dto: CreateApiKeyDto): Promise<CreatedApiKey> {
     if (!dto.name || !dto.name.trim()) {
       throw new BadRequestException("API Key name is required");
     }
 
     let keyValue = dto.customKey?.trim();
     if (keyValue) {
+      // A generated key is 192 bits of randomness, but a custom one is whatever the
+      // operator typed, and the stored digest is only as strong as its input.
+      if (keyValue.length < MIN_CUSTOM_KEY_LENGTH) {
+        throw new BadRequestException(
+          `A custom API key must be at least ${MIN_CUSTOM_KEY_LENGTH} characters long`,
+        );
+      }
       const existing = await this.apiKeyRepository.findOne({
-        where: { key: keyValue },
+        where: { keyHash: hashApiKey(keyValue) },
       });
       if (existing) {
         throw new BadRequestException("API Key with this value already exists");
       }
     } else {
-      keyValue = `sk-ag-${randomBytes(24).toString("hex")}`;
+      keyValue = generateApiKey();
     }
+
+    const allowed = Array.isArray(dto.allowedAccountIds)
+      ? dto.allowedAccountIds.map((s) => String(s).trim()).filter(Boolean)
+      : null;
 
     const entity = this.apiKeyRepository.create({
       name: dto.name.trim(),
-      key: keyValue,
+      keyHash: hashApiKey(keyValue),
+      keyPreview: previewApiKey(keyValue),
       role: dto.role || "client",
       isActive: true,
+      allowedAccountIds: allowed && allowed.length > 0 ? allowed : null,
       expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
       lastUsedAt: null,
     });
 
     const saved = await this.apiKeyRepository.save(entity);
-    this.keyCache.set(saved.key, saved);
+    this.keyCache.set(saved.keyHash, saved);
     this.logger.log(
       `Created new API key [${saved.name}] (Role: ${saved.role}, ID: ${saved.id})`,
     );
-    return saved;
+    return { record: saved, key: keyValue };
   }
 
   /**
-   * List all keys (returns masked keys by default, or with optional unmask)
+   * List all keys. Each carries only its masked preview -- the key cannot be recovered.
    */
-  async listKeys(
-    includeRawKey = false,
-  ): Promise<Array<Omit<ApiKey, "key"> & { key: string }>> {
-    const keys = await this.apiKeyRepository.find({
-      order: { createdAt: "DESC" },
-    });
-
-    return keys.map((k) => ({
-      ...k,
-      key: includeRawKey ? k.key : this.maskKey(k.key),
-    }));
+  async listKeys(): Promise<ApiKey[]> {
+    return this.apiKeyRepository.find({ order: { createdAt: "DESC" } });
   }
 
   async getKeyById(id: string): Promise<ApiKey> {
@@ -280,11 +293,6 @@ export class ApiKeyService implements OnModuleInit, OnModuleDestroy {
       throw new NotFoundException(`API key with ID ${id} not found`);
     }
     return key;
-  }
-
-  async getRawKey(id: string): Promise<string> {
-    const key = await this.getKeyById(id);
-    return key.key;
   }
 
   async updateKey(id: string, dto: UpdateApiKeyDto): Promise<ApiKey> {
@@ -299,12 +307,18 @@ export class ApiKeyService implements OnModuleInit, OnModuleDestroy {
     if (dto.isActive !== undefined) {
       key.isActive = dto.isActive;
     }
+    if (dto.allowedAccountIds !== undefined) {
+      const allowed = Array.isArray(dto.allowedAccountIds)
+        ? dto.allowedAccountIds.map((s) => String(s).trim()).filter(Boolean)
+        : null;
+      key.allowedAccountIds = allowed && allowed.length > 0 ? allowed : null;
+    }
     if (dto.expiresAt !== undefined) {
       key.expiresAt = dto.expiresAt ? new Date(dto.expiresAt) : null;
     }
 
     const updated = await this.apiKeyRepository.save(key);
-    this.keyCache.set(updated.key, updated);
+    this.keyCache.set(updated.keyHash, updated);
     this.logger.log(
       `Updated API key [${updated.name}] (ID: ${updated.id}, Active: ${updated.isActive})`,
     );
@@ -318,7 +332,7 @@ export class ApiKeyService implements OnModuleInit, OnModuleDestroy {
     }
 
     await this.apiKeyRepository.delete(id);
-    this.keyCache.delete(key.key);
+    this.keyCache.delete(key.keyHash);
     this.logger.log(`Deleted API key [${key.name}] (ID: ${id})`);
     return true;
   }

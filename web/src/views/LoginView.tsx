@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import { KeyRound, LogIn, AlertCircle, Lock, ShieldCheck } from 'lucide-react';
 import { api } from '../api/client';
+import { useTranslation } from '../i18n';
+import { LanguageSwitcher } from '../components/LanguageSwitcher';
 
 interface LoginViewProps {
   onAuthed: (key: string) => void;
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({ onAuthed }) => {
+  const { t } = useTranslation();
   const [key, setKey] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -15,7 +18,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onAuthed }) => {
     e.preventDefault();
     const trimmed = key.trim();
     if (!trimmed) {
-      setError('Vui lòng nhập API Key');
+      setError(t('login.errorEmpty'));
       return;
     }
 
@@ -26,40 +29,44 @@ export const LoginView: React.FC<LoginViewProps> = ({ onAuthed }) => {
       if (res.valid) {
         onAuthed(trimmed);
       } else {
-        setError(res.error || 'API Key không hợp lệ');
+        setError(res.error || t('login.errorInvalid'));
       }
     } catch (err: any) {
-      setError(`Không thể kết nối tới server: ${err.message}`);
+      setError(t('login.errorConnection', { message: err.message }));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans flex items-center justify-center p-6">
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans flex items-center justify-center p-6 relative">
+      <div className="absolute top-6 right-6">
+        <LanguageSwitcher />
+      </div>
+
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center">
             <Lock className="w-8 h-8 text-emerald-400" />
           </div>
-          <h1 className="text-2xl font-bold">Antigravity Proxy</h1>
-          <p className="text-sm text-zinc-400 mt-1">Admin Dashboard</p>
+          <h1 className="text-2xl font-bold">{t('login.title')}</h1>
+          <p className="text-sm text-zinc-400 mt-1">{t('login.subtitle')}</p>
         </div>
 
         <form
           onSubmit={handleSubmit}
-          className="p-6 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-4"
+          className="p-6 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-4 shadow-xl"
         >
           <div>
             <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider flex items-center gap-1.5 mb-2">
               <KeyRound className="w-3.5 h-3.5" />
-              API Key
+              {t('login.apiKeyLabel')}
             </label>
             <input
               type="password"
               value={key}
               onChange={(e) => setKey(e.target.value)}
-              placeholder="Nhập API Key của bạn"
+              placeholder={t('login.placeholder')}
               autoFocus
               className="w-full px-4 py-2.5 rounded-xl bg-zinc-950 border border-zinc-700 focus:border-emerald-500 focus:outline-none text-sm placeholder-zinc-500 font-mono"
             />
@@ -78,12 +85,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onAuthed }) => {
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-zinc-950 rounded-xl font-semibold text-sm transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50"
           >
             <LogIn className="w-4 h-4" />
-            <span>{loading ? 'Đang kiểm tra...' : 'Đăng nhập'}</span>
+            <span>{loading ? t('login.submitting') : t('login.submit')}</span>
           </button>
 
           <p className="flex items-center justify-center gap-1.5 text-[11px] text-zinc-500 pt-1">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-500/70" />
-            API Key được dùng làm danh tính để ghi Traffic Logs
+            {t('login.footerHint')}
           </p>
         </form>
       </div>

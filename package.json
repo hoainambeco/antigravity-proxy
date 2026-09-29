@@ -2,6 +2,12 @@
   "name": "antigravity-proxy",
   "version": "1.0.0",
   "description": "Standalone Multi-Protocol LLM Proxy Gateway for Google Cloud Code / Antigravity",
+  "license": "MIT",
+  "author": "HoaiNam",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hoainambeco/antigravity-proxy.git"
+  },
   "main": "dist/main.js",
   "scripts": {
     "build": "nest build",

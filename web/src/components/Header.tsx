@@ -1,5 +1,7 @@
 import React from 'react';
 import { RefreshCw, Globe, ShieldCheck } from 'lucide-react';
+import { useTranslation } from '../i18n';
+import { LanguageSwitcher } from './LanguageSwitcher';
 
 interface HeaderProps {
   title: string;
@@ -14,17 +16,21 @@ export const Header: React.FC<HeaderProps> = ({
   onRefresh,
   isRefreshing = false,
 }) => {
+  const { t } = useTranslation();
+
   return (
-    <header className="h-16 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-md px-8 flex items-center justify-between sticky top-0 z-10">
+    <header className="h-16 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-md px-6 md:px-8 flex items-center justify-between sticky top-0 z-10">
       <div>
         <h2 className="text-lg font-bold text-zinc-100">{title}</h2>
         {subtitle && <p className="text-xs text-zinc-400">{subtitle}</p>}
       </div>
 
       <div className="flex items-center gap-3">
-        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900 border border-zinc-800 text-xs text-zinc-300">
+        <LanguageSwitcher />
+
+        <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900 border border-zinc-800 text-xs text-zinc-300">
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Local Security Active</span>
+          <span>{t('common.localSecurityActive')}</span>
         </div>
 
         {onRefresh && (
@@ -32,10 +38,10 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={onRefresh}
             disabled={isRefreshing}
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition-all disabled:opacity-50"
-            title="Đồng bộ Quotas và Models từ Google"
+            title={t('common.syncTooltip')}
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-emerald-400' : ''}`} />
-            <span>{isRefreshing ? 'Đang đồng bộ...' : 'Đồng bộ Quota'}</span>
+            <span>{isRefreshing ? t('common.syncing') : t('common.syncQuota')}</span>
           </button>
         )}
 

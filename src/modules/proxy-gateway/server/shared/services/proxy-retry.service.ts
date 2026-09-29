@@ -2,6 +2,7 @@ import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { isString } from 'lodash-es';
 import { CloudAccount } from '@/modules/cloud-account/types';
 import { calculateRetryDelay, sleep } from '../../../antigravity/retry-utils';
+import { getCurrentAllowedAccountIds } from '../../../audit/traffic-audit-context';
 import {
   hasExplicitQuotaExhaustedSignal,
   hasStrictQuotaExhaustedMarker,
@@ -32,17 +33,20 @@ export interface ProxyTokenRetryState {
   retryAfterSeconds?: number;
   model?: string;
   imagePermit: ImageSchedulerPermit | null;
+  allowedAccountIds?: string[] | null;
 }
 
 export interface ProxyRetryAccountLeaseService {
   getNextToken(options?: {
     sessionKey?: string;
     excludeAccountIds?: string[];
+    allowedAccountIds?: string[];
     model?: string;
   }): Promise<CloudAccount | null>;
   getNextImageToken?(options?: {
     sessionKey?: string;
     excludeAccountIds?: string[];
+    allowedAccountIds?: string[];
     model?: string;
     signal?: AbortSignal;
   }): Promise<{ token: CloudAccount; permit: ImageSchedulerPermit }>;
@@ -113,7 +117,9 @@ export class ProxyRetryService {
     private readonly modelAvailability: ModelAvailabilityService,
   ) {}
 
-  createTokenRetryState(): ProxyTokenRetryState {
+  createTokenRetryState(allowedAccountIds?: string[] | null): ProxyTokenRetryState {
+    const allowed =
+      allowedAccountIds !== undefined ? allowedAccountIds : getCurrentAllowedAccountIds();
     return {
       attemptedAccountIds: new Set<string>(),
       graceRetryToken: null,
@@ -122,6 +128,7 @@ export class ProxyRetryService {
       failureCount: 0,
       allFailuresRateLimited: true,
       imagePermit: null,
+      allowedAccountIds: allowed ?? null,
     };
   }
 
@@ -142,12 +149,20 @@ export class ProxyRetryService {
 
     this.releaseImagePermit(retryState);
 
+    const effectiveAllowed =
+      retryState.allowedAccountIds !== undefined
+        ? retryState.allowedAccountIds
+        : getCurrentAllowedAccountIds();
+    const allowedAccountIds =
+      effectiveAllowed && effectiveAllowed.length > 0 ? effectiveAllowed : undefined;
+
     if (imageRequest && this.accountLeaseService.getNextImageToken) {
       let selected: { token: CloudAccount; permit: ImageSchedulerPermit };
       try {
         selected = await this.accountLeaseService.getNextImageToken({
           sessionKey,
           excludeAccountIds: Array.from(retryState.attemptedAccountIds),
+          allowedAccountIds,
           model,
           signal,
         });
@@ -173,6 +188,7 @@ export class ProxyRetryService {
     const token = await this.accountLeaseService.getNextToken({
       sessionKey,
       excludeAccountIds: Array.from(retryState.attemptedAccountIds),
+      allowedAccountIds,
       model,
     });
     if (!token) {

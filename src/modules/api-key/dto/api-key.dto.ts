@@ -4,6 +4,7 @@ export interface CreateApiKeyDto {
   name: string;
   role?: ApiKeyRole;
   customKey?: string;
+  allowedAccountIds?: string[] | null;
   expiresAt?: Date | string | null;
 }
 
@@ -11,6 +12,7 @@ export interface UpdateApiKeyDto {
   name?: string;
   role?: ApiKeyRole;
   isActive?: boolean;
+  allowedAccountIds?: string[] | null;
   expiresAt?: Date | string | null;
 }
 
@@ -20,5 +22,6 @@ export interface ApiKeyValidationResult {
   role?: ApiKeyRole;
   keyId?: string;
   keyName?: string;
+  allowedAccountIds?: string[] | null;
   reason?: "invalid_key" | "disabled" | "expired";
 }

@@ -45,6 +45,7 @@ export class AuthController {
       keyName: result.keyName ?? null,
       role: result.role ?? "client",
       isMaster: result.isMaster ?? false,
+      allowedAccountIds: result.allowedAccountIds ?? null,
     };
   }
 }

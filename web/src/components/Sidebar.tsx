@@ -8,6 +8,7 @@ import {
   Layers,
   Sparkles,
 } from 'lucide-react';
+import { useTranslation } from '../i18n';
 
 export type TabType = 'dashboard' | 'accounts' | 'models' | 'api-keys' | 'audit';
 
@@ -18,12 +19,14 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, statusPort = 8044 }) => {
+  const { t } = useTranslation();
+
   const navItems = [
-    { id: 'dashboard' as TabType, label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'accounts' as TabType, label: 'Tài khoản & Quota', icon: Users },
-    { id: 'models' as TabType, label: 'Models & Routing', icon: Cpu },
-    { id: 'api-keys' as TabType, label: 'API Keys', icon: Key },
-    { id: 'audit' as TabType, label: 'Traffic & Logs', icon: Activity },
+    { id: 'dashboard' as TabType, label: t('navigation.dashboard'), icon: LayoutDashboard },
+    { id: 'accounts' as TabType, label: t('navigation.accounts'), icon: Users },
+    { id: 'models' as TabType, label: t('navigation.models'), icon: Cpu },
+    { id: 'api-keys' as TabType, label: t('navigation.apiKeys'), icon: Key },
+    { id: 'audit' as TabType, label: t('navigation.audit'), icon: Activity },
   ];
 
   return (
@@ -38,7 +41,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, statu
             <h1 className="font-bold text-base text-zinc-100 tracking-tight flex items-center gap-1.5">
               Antigravity <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-mono">UI</span>
             </h1>
-            <p className="text-xs text-zinc-400 font-medium">LLM Gateway Manager</p>
+            <p className="text-xs text-zinc-400 font-medium">{t('common.brandSubtitle')}</p>
           </div>
         </div>
 
@@ -70,13 +73,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, statu
         <div className="flex items-center justify-between text-xs text-zinc-400">
           <span className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            Gateway Online
+            {t('common.gatewayOnline')}
           </span>
           <span className="font-mono text-zinc-300">:{statusPort}</span>
         </div>
         <div className="mt-2 text-[11px] text-zinc-400 flex items-center gap-1 font-mono">
           <Layers className="w-3.5 h-3.5 text-zinc-400" />
-          <span>v1.0.0 Standalone</span>
+          <span>{t('common.versionStandalone')}</span>
         </div>
       </div>
     </aside>

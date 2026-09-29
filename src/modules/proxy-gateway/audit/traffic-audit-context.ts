@@ -50,6 +50,7 @@ export interface TrafficAuditRequestContext {
   thoughtSessionStable: boolean;
   proxyTiming?: ProxyResponseTimingState;
   clientSessionId?: string;
+  allowedAccountIds?: string[] | null;
 }
 
 export interface ProxyResponseTimingState {
@@ -180,6 +181,26 @@ export function setCurrentAuditAccountId(accountId: string | null): void {
   if (context) {
     context.currentAccountId = accountId;
   }
+}
+
+export function setCurrentAuditAllowedAccountIds(accountIds: string[] | null | undefined): void {
+  const context = getTrafficAuditRequestContext();
+  if (context) {
+    context.allowedAccountIds = accountIds ?? null;
+  }
+}
+
+export function getCurrentAllowedAccountIds(): string[] | null | undefined {
+  const context = getTrafficAuditRequestContext();
+  if (context?.allowedAccountIds !== undefined) {
+    return context.allowedAccountIds;
+  }
+  const req = (context as any)?.request;
+  const apiKeyInfo = req?.apiKeyInfo as { allowedAccountIds?: string[] | null } | undefined;
+  if (apiKeyInfo?.allowedAccountIds !== undefined) {
+    return apiKeyInfo.allowedAccountIds;
+  }
+  return undefined;
 }
 
 /** Capture upstream usage that may be intentionally omitted from a client-compatible response. */
