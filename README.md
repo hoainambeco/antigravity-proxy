@@ -22,6 +22,29 @@ Seamlessly proxies OpenAI, Anthropic, and Gemini API requests to Google Cloud Co
 
 ---
 
+## Screenshots
+
+The built-in web dashboard (served by the proxy itself) for managing accounts, routing, API keys, and traffic. All data shown is sample data.
+
+![Dashboard](docs/screenshots/02-dashboard.png)
+
+| Accounts & Quota | Rule-Based Routing |
+| :---: | :---: |
+| ![Accounts & Quota](docs/screenshots/03-accounts.png) | ![Routing Rules](docs/screenshots/04-routing.png) |
+| **Model Catalog** | **API Keys** |
+| ![Model Catalog](docs/screenshots/05-models.png) | ![API Keys](docs/screenshots/06-api-keys.png) |
+| **Traffic & Audit Logs** | **Login** |
+| ![Traffic & Logs](docs/screenshots/07-traffic.png) | ![Login](docs/screenshots/01-login.png) |
+
+<details>
+<summary>Vietnamese UI (i18n)</summary>
+
+![Dashboard (Vietnamese)](docs/screenshots/08-dashboard-vi.png)
+
+</details>
+
+---
+
 ## Features
 
 - **Multi-Protocol Translation**:

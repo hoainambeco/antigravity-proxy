@@ -56,9 +56,6 @@ playwright-report/
 /temp/
 __pycache__/
 
-# Screenshots
-screenshots/
-docs/screenshots/
 
 # Local agent / assistant config and notes
 .claude/
